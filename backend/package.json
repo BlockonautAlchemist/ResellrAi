@@ -1,0 +1,31 @@
+{
+  "name": "resellrai-backend",
+  "version": "0.1.0",
+  "description": "ResellrAI API Server",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "tsx src/tests/handshake/run-all.ts",
+    "test:supabase": "tsx src/tests/handshake/supabase.test.ts",
+    "test:openrouter": "tsx src/tests/handshake/openrouter.test.ts",
+    "test:pipeline": "tsx src/tests/handshake/pipeline.test.ts",
+    "test:integration": "tsx src/tests/integration/listing-flow.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "uuid": "^13.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
