@@ -14,7 +14,7 @@ import { z } from 'zod';
 export const ConditionEnum = z.enum(['new', 'like_new', 'good', 'fair', 'poor']);
 export type Condition = z.infer<typeof ConditionEnum>;
 
-export const PlatformEnum = z.enum(['ebay', 'poshmark']);
+export const PlatformEnum = z.enum(['ebay']);
 export type Platform = z.infer<typeof PlatformEnum>;
 
 export const ListingStatusEnum = z.enum(['draft', 'ready', 'exported']);
@@ -297,10 +297,6 @@ export const PLATFORM_LIMITS = {
   ebay: {
     titleMax: 80,
     descriptionMax: 4000,
-  },
-  poshmark: {
-    titleMax: 80,
-    descriptionMax: 1500,
   },
 } as const;
 

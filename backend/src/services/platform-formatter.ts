@@ -1,7 +1,7 @@
 /**
  * PlatformFormatterService
  * 
- * Formats listings for specific marketplaces (eBay, Poshmark).
+ * Formats listings for specific marketplaces (eBay).
  * Handles platform-specific requirements for titles, descriptions, and attributes.
  */
 
@@ -18,13 +18,6 @@ const PLATFORM_CONFIG = {
     descriptionMaxLength: 4000,
     requiredAttributeKeys: ['Brand', 'Color'],
     optionalAttributeKeys: ['Size', 'Style', 'Material', 'Type'],
-  },
-  poshmark: {
-    titleMaxLength: 80,
-    descriptionFormat: 'plain' as const,
-    descriptionMaxLength: 1500,
-    requiredAttributeKeys: ['Brand', 'Size'],
-    optionalAttributeKeys: ['Color', 'Style', 'Material'],
   },
 };
 
@@ -122,12 +115,12 @@ function mapCategoryId(category: string, platform: Platform): string {
   // Simplified category mapping
   // In production, this would be a comprehensive lookup table
   const categoryMappings: Record<string, Record<Platform, string>> = {
-    "Men's Athletic Shoes": { ebay: '15709', poshmark: 'mens-shoes' },
-    "Women's Athletic Shoes": { ebay: '95672', poshmark: 'womens-shoes' },
-    "Men's Clothing": { ebay: '1059', poshmark: 'mens-clothing' },
-    "Women's Clothing": { ebay: '15724', poshmark: 'womens-clothing' },
-    "Handbags": { ebay: '169291', poshmark: 'bags' },
-    "Jewelry": { ebay: '10968', poshmark: 'jewelry' },
+    "Men's Athletic Shoes": { ebay: '15709' },
+    "Women's Athletic Shoes": { ebay: '95672' },
+    "Men's Clothing": { ebay: '1059' },
+    "Women's Clothing": { ebay: '15724' },
+    "Handbags": { ebay: '169291' },
+    "Jewelry": { ebay: '10968' },
   };
   
   // Try exact match
@@ -144,7 +137,7 @@ function mapCategoryId(category: string, platform: Platform): string {
   }
   
   // Default categories
-  return platform === 'ebay' ? '1' : 'other';
+  return '1';
 }
 
 /**
@@ -186,45 +179,10 @@ function formatForEbay(draft: ListingDraft): PlatformVariant {
 }
 
 /**
- * Format a listing for Poshmark
- */
-function formatForPoshmark(draft: ListingDraft): PlatformVariant {
-  const config = PLATFORM_CONFIG.poshmark;
-  
-  // Format title
-  const title = truncateToLength(draft.title.value, config.titleMaxLength);
-  
-  // Format description as plain text
-  let description = draft.description.value;
-  
-  // Add condition note
-  description += `\n\nCondition: ${draft.condition.value}`;
-  
-  // Truncate if needed
-  const finalDescription = truncateToLength(description, config.descriptionMaxLength);
-  
-  return {
-    platform: 'poshmark',
-    title: {
-      value: title,
-      maxLength: config.titleMaxLength,
-      valid: title.length <= config.titleMaxLength,
-    },
-    description: {
-      value: finalDescription,
-      format: 'plain',
-    },
-    categoryId: mapCategoryId(draft.category.value, 'poshmark'),
-    requiredAttributes: extractRequiredAttributes(draft, 'poshmark'),
-    optionalAttributes: extractOptionalAttributes(draft, 'poshmark'),
-  };
-}
-
-/**
  * Format a listing for a specific platform
  * 
  * @param draft - The listing draft to format
- * @param platform - Target platform ('ebay' or 'poshmark')
+ * @param platform - Target platform ('ebay')
  * @returns Platform-specific formatted listing
  */
 export function formatForPlatform(
@@ -234,8 +192,6 @@ export function formatForPlatform(
   switch (platform) {
     case 'ebay':
       return formatForEbay(draft);
-    case 'poshmark':
-      return formatForPoshmark(draft);
     default:
       throw new Error(`Unsupported platform: ${platform}`);
   }

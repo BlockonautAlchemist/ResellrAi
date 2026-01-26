@@ -363,7 +363,7 @@ Price range estimation for the item.
 
 ## Schema 5: PlatformVariant
 
-Platform-specific formatted listing (eBay, Poshmark).
+Platform-specific formatted listing (eBay).
 
 ```json
 {
@@ -372,7 +372,7 @@ Platform-specific formatted listing (eBay, Poshmark).
   "properties": {
     "platform": {
       "type": "string",
-      "enum": ["ebay", "poshmark"],
+      "enum": ["ebay"],
       "description": "Target marketplace"
     },
     "title": {
@@ -519,7 +519,7 @@ The complete, finalized listing ready for export.
     },
     "platform": {
       "type": "string",
-      "enum": ["ebay", "poshmark"]
+      "enum": ["ebay"]
     },
     "title": {
       "type": "string",
