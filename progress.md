@@ -262,4 +262,350 @@ All connectivity tests passed:
 
 ---
 
+## 2026-01-26 - eBay Integration Phase Start
+
+### Phase Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 0 | Protocol Initialization | ✅ Complete |
+| Phase 1 | Discovery Questions | ✅ Complete |
+| Phase 2 | Data-First Schemas | ✅ Complete |
+| Phase 3 | OAuth Implementation | ✅ Complete |
+| Phase 4 | Pricing Comps Engine | ✅ Complete |
+| Phase 5 | List on eBay Flow | ✅ Complete |
+| Phase 6 | Failure Handling + Compliance | ✅ Complete |
+
+### eBay Integration: APPROVED ✅
+
+### Documents Created
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `ebay_scope.md` | Features in/out of scope | Created, awaiting discovery answers |
+| `ebay_schemas.md` | Canonical JSON schemas | Draft complete |
+| `ebay_architecture.md` | Services, flows, invariants | Draft complete |
+| `progress.md` | Updated with eBay phase | Updated |
+
+### Checklist
+
+- [x] Create ebay_scope.md
+- [x] Create ebay_schemas.md
+- [x] Create ebay_architecture.md
+- [x] Update progress.md with eBay phase
+- [x] Answer Phase 1 discovery questions
+- [x] Create Zod schemas (`backend/src/types/ebay-schemas.ts`)
+- [x] Create DB migrations (`backend/src/db/ebay-migrations.sql`)
+- [x] Implement OAuth services (`backend/src/services/ebay/`)
+- [x] Implement OAuth routes (`backend/src/routes/ebay.ts`)
+- [x] Add environment config for eBay
+- [x] Add OAuth tests
+- [x] Implement Comps Service (`backend/src/services/ebay/comps.ts`)
+- [x] Add comps route (`GET /api/v1/ebay/comps`)
+- [x] Add comps tests
+- [x] Implement Policy Service (`backend/src/services/ebay/policy.ts`)
+- [x] Implement Listing Service (`backend/src/services/ebay/listing.ts`)
+- [x] Add policy route (`GET /api/v1/ebay/policies`)
+- [x] Add publish routes (`POST .../publish`, `GET .../status`)
+- [x] Add listing tests
+- [x] Implement Error Handling module (`backend/src/services/ebay/errors.ts`)
+- [x] Add comprehensive integration tests
+- [x] Add test runner (`backend/src/tests/ebay/run-all.ts`)
+- [ ] **FINAL GATE: User approval of complete eBay integration**
+
+### Phase 2 Implementation Details
+
+**Zod Schemas Created** (`backend/src/types/ebay-schemas.ts`):
+- OAuth: `EbayAuthStartRequest`, `EbayAuthStartResponse`, `EbayAuthCallbackPayload`, `EbayTokenSet`, `EbayConnectedAccount`
+- Comps: `EbayCompsQuery`, `EbayCompItem`, `EbayCompsStats`, `EbayCompsResult`
+- Listing: `EbayListingDraft`, `EbayInventoryItemPayload`, `EbayOfferPayload`, `EbayPublishResult`
+- Policy: `EbayFulfillmentPolicy`, `EbayPaymentPolicy`, `EbayReturnPolicy`, `EbayUserPolicies`
+- Error: `EbayApiError`
+- DB Records: `EbayAccountRecord`, `EbayAuthStateRecord`, `ListingEbayFields`
+- Constants: `EBAY_API_URLS`, `EBAY_REQUIRED_SCOPES`, `COMPS_CONFIDENCE_THRESHOLDS`
+- Helpers: `getCompsConfidence()`, `calculateMedian()`, `calculateAverage()`, `generateEbaySku()`, `tokenNeedsRefresh()`, `getCompsSourceMessage()`
+
+**Database Migrations** (`backend/src/db/ebay-migrations.sql`):
+- Extended `listings` table: `pricing_comps`, `ebay_publish`, `ebay_offer_id`, `ebay_sku`, `ebay_listing_id`, `ebay_published_at`
+- New `ebay_accounts` table: user OAuth tokens (encrypted), eBay user info, status tracking
+- New `ebay_auth_states` table: CSRF protection for OAuth flow
+- Cleanup functions: `cleanup_expired_ebay_auth_states()`, `mark_expired_ebay_accounts()`
+- Indexes for performance
+- RLS policies (commented, ready for auth integration)
+
+### Phase 3 Implementation Details
+
+**Services Created** (`backend/src/services/ebay/`):
+
+| File | Purpose |
+|------|---------|
+| `token-crypto.ts` | AES-256-GCM encryption for OAuth tokens |
+| `client.ts` | eBay API HTTP client with retry logic |
+| `auth.ts` | OAuth service (start, callback, refresh, disconnect) |
+| `index.ts` | Module exports |
+
+**Routes Created** (`backend/src/routes/ebay.ts`):
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/ebay/status` | GET | Check eBay integration status |
+| `/api/v1/ebay/oauth/start` | GET | Start OAuth flow, return auth URL |
+| `/api/v1/ebay/oauth/callback` | GET | Handle eBay callback, exchange code for tokens |
+| `/api/v1/ebay/account` | GET | Get connected account status (safe for client) |
+| `/api/v1/ebay/account` | DELETE | Disconnect eBay account |
+
+**Environment Config Updated** (`backend/src/config/env.ts`):
+- `EBAY_CLIENT_ID` - eBay app client ID
+- `EBAY_CLIENT_SECRET` - eBay app client secret
+- `EBAY_RUNAME` - eBay redirect URL name
+- `EBAY_ENVIRONMENT` - 'sandbox' or 'production'
+- `EBAY_TOKEN_ENCRYPTION_KEY` - 32-byte hex key for AES-256-GCM
+- `APP_BASE_URL` - Server public URL for callbacks
+- `MOBILE_DEEP_LINK_SCHEME` - Mobile app deep link scheme
+
+**Tests Created** (`backend/src/tests/ebay/`):
+- `token-crypto.test.ts` - Encryption/decryption tests
+- `auth.test.ts` - OAuth URL and client tests
+
+**Security Features:**
+- Tokens encrypted with AES-256-GCM before storage
+- State parameter for CSRF protection
+- Tokens never sent to mobile client
+- Automatic token refresh before expiry
+- Replay attack prevention (states marked as used)
+
+### Phase 4 Implementation Details
+
+**Service Created** (`backend/src/services/ebay/comps.ts`):
+
+| Component | Purpose |
+|-----------|---------|
+| `EbayCompsService` | Main service class |
+| `getComps()` | Fetch comparables with caching |
+| `fetchSoldComps()` | Attempt sold data (requires Marketplace Insights API) |
+| `fetchActiveComps()` | Fetch active listings via Browse API |
+| `calculateStats()` | Compute median, avg, min, max |
+| In-memory cache | 15-minute TTL, auto-cleanup |
+
+**Route Added** (`backend/src/routes/ebay.ts`):
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/ebay/comps` | GET | Get pricing comparables |
+
+**Query Parameters:**
+- `keywords` (required): Search terms
+- `category_id` (optional): eBay category filter
+- `condition` (optional): NEW, LIKE_NEW, VERY_GOOD, GOOD, ACCEPTABLE
+- `brand` (optional): Brand filter
+- `limit` (optional): Max results (default: 20, max: 50)
+
+**Response Structure:**
+```json
+{
+  "source": "sold" | "active" | "none",
+  "source_message": "Based on X recently sold items",
+  "stats": {
+    "median": 45.00,
+    "average": 47.50,
+    "min": 25.00,
+    "max": 75.00,
+    "sample_size": 15,
+    "confidence": "high" | "medium" | "low" | "none"
+  },
+  "limitations": ["Prices based on active listings..."],
+  "data": [{ item_id, title, price, condition, item_url }],
+  "cached": false
+}
+```
+
+**Key Design Decisions:**
+1. Source transparency: Always labeled (sold/active/none)
+2. Sold data not available via public Browse API - requires Marketplace Insights API
+3. Falls back to active listings with clear UI messaging
+4. Statistics always calculated deterministically
+5. Caching prevents excessive API calls (15-min TTL)
+6. Confidence levels based on sample size
+
+**Tests Created:**
+- `backend/src/tests/ebay/comps.test.ts` - Statistics and validation tests
+
+### Phase 5 Implementation Details
+
+**Services Created:**
+
+| File | Purpose |
+|------|---------|
+| `backend/src/services/ebay/policy.ts` | Fetch user's fulfillment, payment, return policies |
+| `backend/src/services/ebay/listing.ts` | Full eBay publish flow (inventory → offer → publish) |
+
+**Routes Added:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/ebay/policies` | GET | Get user's eBay business policies |
+| `/api/v1/ebay/listings/:id/publish` | POST | Publish listing to eBay |
+| `/api/v1/ebay/listings/:id/status` | GET | Get eBay listing status |
+
+**Publish Flow (3-step eBay Inventory API):**
+
+```
+1. PUT /sell/inventory/v1/inventory_item/{sku}
+   → Creates/replaces inventory item with product details
+
+2. POST /sell/inventory/v1/offer
+   → Creates offer with pricing, policies, category
+   → Returns offerId
+
+3. POST /sell/inventory/v1/offer/{offerId}/publish
+   → Makes listing live on eBay
+   → Returns listingId
+```
+
+**EbayPolicyService Features:**
+- Fetches fulfillment policies (shipping options)
+- Fetches payment policies (payment methods)
+- Fetches return policies (return terms)
+- 1-hour cache to reduce API calls
+- Validates user has all required policies
+
+**EbayListingService Features:**
+- Generates unique SKU per listing (RSAI-{id}-{timestamp})
+- Converts internal listing format to eBay Inventory API format
+- Maps conditions (new, like_new, good, fair, poor → eBay conditions)
+- Converts item specifics to eBay aspects format
+- Full error handling with detailed error codes
+- Returns listing URL on success
+
+**Publish Request Format:**
+```json
+{
+  "policies": {
+    "fulfillment_policy_id": "123",
+    "payment_policy_id": "456",
+    "return_policy_id": "789"
+  },
+  "price_override": 45.00,
+  "listing_data": {
+    "listing_draft": { ... },
+    "photo_urls": [...],
+    "pricing_suggestion": { ... }
+  }
+}
+```
+
+**Publish Response Format:**
+```json
+{
+  "success": true,
+  "listing_id": "123456789",
+  "offer_id": "offer123",
+  "sku": "RSAI-12345-ABC123",
+  "listing_url": "https://www.ebay.com/itm/123456789",
+  "published_at": "2026-01-26T...",
+  "warnings": []
+}
+```
+
+**Tests Created:**
+- `backend/src/tests/ebay/listing.test.ts` - SKU generation, format tests
+
+### Phase 6 Implementation Details
+
+**Error Handling Utilities** (`backend/src/services/ebay/errors.ts`):
+
+| Export | Purpose |
+|--------|---------|
+| `EBAY_ERROR_CODES` | All error code constants (22 codes) |
+| `EBAY_ERROR_MESSAGES` | Human-readable messages for each code |
+| `buildEbayError()` | Build structured EbayApiError response |
+| `createErrorResponse()` | Build Express-compatible error response |
+| `isRetryableError()` | Check if error can be retried |
+| `requiresReauth()` | Check if error needs re-authentication |
+| `classifyEbayError()` | Map eBay/HTTP errors to internal codes |
+| `logEbayError()` | Structured error logging |
+
+**Error Categories:**
+
+| Category | Codes | Recovery Action |
+|----------|-------|-----------------|
+| Authentication | AUTH_REQUIRED, TOKEN_EXPIRED, OAUTH_* | `reauth` |
+| Rate Limiting | RATE_LIMITED | `retry` (with delay) |
+| Network | NETWORK_ERROR, TIMEOUT_ERROR | `retry` |
+| Validation | VALIDATION_ERROR, LISTING_INVALID | `none` (fix input) |
+| Configuration | EBAY_NOT_CONFIGURED | `contact_support` |
+| eBay API | EBAY_API_ERROR, *_FAILED | `retry` |
+
+**Structured Error Response Format:**
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests. Please wait and try again.",
+    "ebay_error_id": "15007"
+  },
+  "recovery": {
+    "action": "retry",
+    "retry_after": 60,
+    "message": "Please try again in a few moments"
+  },
+  "request_id": "req_abc123",
+  "timestamp": "2026-01-26T..."
+}
+```
+
+**Comprehensive Tests** (`backend/src/tests/ebay/`):
+
+| File | Tests |
+|------|-------|
+| `token-crypto.test.ts` | Encryption/decryption, IV randomness, tampering detection |
+| `auth.test.ts` | OAuth URLs, scopes, client methods |
+| `comps.test.ts` | Statistics calculation, confidence levels, query validation |
+| `listing.test.ts` | SKU generation, condition mapping, draft building |
+| `integration.test.ts` | OAuth flows, token refresh, error handling, rate limits |
+| `run-all.ts` | Test runner for all eBay tests |
+
+**Test Coverage:**
+- 22 integration tests covering all critical paths
+- OAuth start URL format validation
+- Token refresh timing logic
+- All error codes have messages
+- Retryable vs non-retryable classification
+- HTTP status to error code mapping
+- Comps query validation (keywords, conditions, limits)
+- Publish result validation (success and error cases)
+- Rate limit retry_after presence
+
+**Run All Tests:**
+```bash
+cd backend
+npx tsx src/tests/ebay/run-all.ts
+```
+
+### Discovery Answers (Phase 1)
+
+| Question | Decision |
+|----------|----------|
+| Environment | Sandbox first |
+| Pricing Truth | Sold prices preferred, fallback to active with clear UI indication |
+| Regions | US only (EBAY_US) |
+| Listing Type | Fixed price only |
+| Category Scope | Generic best-effort mapping |
+| Policies | Users manage in eBay directly |
+| Security | Anonymous for basic features, login required for eBay connection |
+
+### Key Constraints Established
+
+1. OAuth tokens server-side only
+2. Authorization Code flow exclusively
+3. No scraping eBay pages
+4. Pricing source always labeled (sold/active/none)
+5. Never fabricate sold prices
+6. All errors return structured JSON
+7. Sandbox environment for initial development
+8. Fixed price listings only (no auctions v1)
+9. US marketplace only (EBAY_US)
+
+---
+
 *Update this log after every meaningful task. Include what changed, what broke, and what was fixed.*

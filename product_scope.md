@@ -55,7 +55,7 @@ Success metrics:
 | Platform | Status | Notes |
 |----------|--------|-------|
 | eBay | ✅ v1 | Primary focus |
-| Poshmark | ✅ v1 | Secondary focus |
+| Poshmark | ❌ v1.5+ | Future consideration |
 | Mercari | ❌ v1.5+ | Future consideration |
 | Depop | ❌ v1.5+ | Future consideration |
 | Facebook Marketplace | ❌ v1.5+ | Future consideration |
@@ -95,7 +95,6 @@ Success metrics:
 - [ ] Category suggestion
 - [ ] Price range estimation
 - [ ] eBay format export
-- [ ] Poshmark format export
 - [ ] Edit any AI-generated field
 - [ ] Regenerate individual sections
 - [ ] Copy listing to clipboard
@@ -160,7 +159,7 @@ These features are **explicitly out of scope** for v1:
 
 - [ ] User can generate listing in < 60 seconds
 - [ ] AI output is editable and regeneratable
-- [ ] eBay and Poshmark formats work correctly
+- [ ] eBay format work correctly
 - [ ] Free tier functional with 5 listing limit
 - [ ] No critical AI hallucination issues
 - [ ] Copy-to-clipboard works reliably

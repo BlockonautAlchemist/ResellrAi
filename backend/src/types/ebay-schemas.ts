@@ -1,0 +1,574 @@
+/**
+ * ResellrAI eBay Integration Type Definitions
+ *
+ * Canonical TypeScript types and Zod validators for eBay integration.
+ * Derived from ebay_schemas.md - these schemas are the source of truth.
+ *
+ * Scope Constraints (v1):
+ * - Marketplace: EBAY_US only
+ * - Format: Fixed price only (no auctions)
+ * - Environment: Sandbox first
+ */
+
+import { z } from 'zod';
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+export const EbayMarketplaceEnum = z.enum(['EBAY_US']);
+export type EbayMarketplace = z.infer<typeof EbayMarketplaceEnum>;
+
+export const EbayConditionEnum = z.enum([
+  'NEW',
+  'LIKE_NEW',
+  'VERY_GOOD',
+  'GOOD',
+  'ACCEPTABLE',
+]);
+export type EbayCondition = z.infer<typeof EbayConditionEnum>;
+
+export const EbayCompsSourceEnum = z.enum(['sold', 'active', 'none']);
+export type EbayCompsSource = z.infer<typeof EbayCompsSourceEnum>;
+
+export const EbayCompsConfidenceEnum = z.enum(['high', 'medium', 'low', 'none']);
+export type EbayCompsConfidence = z.infer<typeof EbayCompsConfidenceEnum>;
+
+export const EbayAccountStatusEnum = z.enum(['active', 'expired', 'revoked']);
+export type EbayAccountStatus = z.infer<typeof EbayAccountStatusEnum>;
+
+export const EbayRedirectContextEnum = z.enum(['mobile', 'web']);
+export type EbayRedirectContext = z.infer<typeof EbayRedirectContextEnum>;
+
+export const EbayErrorRecoveryActionEnum = z.enum([
+  'retry',
+  'reauth',
+  'contact_support',
+  'none',
+]);
+export type EbayErrorRecoveryAction = z.infer<typeof EbayErrorRecoveryActionEnum>;
+
+// =============================================================================
+// OAUTH / AUTHENTICATION SCHEMAS
+// =============================================================================
+
+/**
+ * Request to initiate OAuth flow
+ */
+export const EbayAuthStartRequestSchema = z.object({
+  user_id: z.string().uuid(),
+  scopes: z.array(z.string()).optional(),
+  redirect_context: EbayRedirectContextEnum,
+});
+export type EbayAuthStartRequest = z.infer<typeof EbayAuthStartRequestSchema>;
+
+/**
+ * Response containing OAuth URL for user redirect
+ */
+export const EbayAuthStartResponseSchema = z.object({
+  auth_url: z.string().url(),
+  state: z.string().min(32),
+  expires_at: z.string().datetime(),
+});
+export type EbayAuthStartResponse = z.infer<typeof EbayAuthStartResponseSchema>;
+
+/**
+ * Payload received from eBay OAuth callback
+ */
+export const EbayAuthCallbackPayloadSchema = z.object({
+  code: z.string(),
+  state: z.string(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+});
+export type EbayAuthCallbackPayload = z.infer<typeof EbayAuthCallbackPayloadSchema>;
+
+/**
+ * Internal token storage (NEVER sent to client)
+ */
+export const EbayTokenSetSchema = z.object({
+  access_token: z.string(),
+  refresh_token: z.string(),
+  token_type: z.string().default('User Access Token'),
+  scopes: z.array(z.string()),
+  access_token_expires_at: z.string().datetime(),
+  refresh_token_expires_at: z.string().datetime(),
+  ebay_user_id: z.string(),
+});
+export type EbayTokenSet = z.infer<typeof EbayTokenSetSchema>;
+
+/**
+ * User-facing account status (safe for client)
+ */
+export const EbayConnectedAccountSchema = z.object({
+  connected: z.boolean(),
+  ebay_username: z.string().optional(),
+  connected_at: z.string().datetime().optional(),
+  needs_reauth: z.boolean().optional(),
+  marketplace: EbayMarketplaceEnum.optional(),
+});
+export type EbayConnectedAccount = z.infer<typeof EbayConnectedAccountSchema>;
+
+// =============================================================================
+// PRICING COMPS SCHEMAS
+// =============================================================================
+
+/**
+ * Input query for pricing comparables
+ */
+export const EbayCompsQuerySchema = z.object({
+  keywords: z.string().min(1).max(350),
+  category_id: z.string().optional(),
+  condition: EbayConditionEnum.optional(),
+  brand: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
+  marketplace_id: EbayMarketplaceEnum.default('EBAY_US'),
+});
+export type EbayCompsQuery = z.infer<typeof EbayCompsQuerySchema>;
+
+/**
+ * Single comparable item
+ */
+export const EbayCompItemSchema = z.object({
+  item_id: z.string(),
+  title: z.string(),
+  price: z.object({
+    value: z.number(),
+    currency: z.string().default('USD'),
+  }),
+  condition: z.string(),
+  item_url: z.string().url(),
+  image_url: z.string().url().optional(),
+  sold_date: z.string().datetime().optional(),
+  seller: z
+    .object({
+      username: z.string(),
+      feedback_score: z.number().optional(),
+    })
+    .optional(),
+});
+export type EbayCompItem = z.infer<typeof EbayCompItemSchema>;
+
+/**
+ * Statistical summary of comps
+ */
+export const EbayCompsStatsSchema = z.object({
+  median: z.number().nullable(),
+  average: z.number().nullable(),
+  min: z.number().nullable(),
+  max: z.number().nullable(),
+  sample_size: z.number().int().min(0),
+  confidence: EbayCompsConfidenceEnum,
+});
+export type EbayCompsStats = z.infer<typeof EbayCompsStatsSchema>;
+
+/**
+ * Complete pricing comps response
+ */
+export const EbayCompsResultSchema = z.object({
+  source: EbayCompsSourceEnum,
+  data: z.array(EbayCompItemSchema),
+  stats: EbayCompsStatsSchema,
+  limitations: z.array(z.string()),
+  query: z.object({
+    keywords: z.string(),
+    category_id: z.string().optional(),
+    marketplace_id: EbayMarketplaceEnum,
+    executed_at: z.string().datetime(),
+  }),
+  cached: z.boolean(),
+  cache_expires_at: z.string().datetime().optional(),
+});
+export type EbayCompsResult = z.infer<typeof EbayCompsResultSchema>;
+
+// =============================================================================
+// LISTING / PUBLISH SCHEMAS
+// =============================================================================
+
+/**
+ * Pre-publish listing ready for review
+ */
+export const EbayListingDraftSchema = z.object({
+  listing_id: z.string().uuid(),
+  title: z.string().max(80),
+  description: z.string().max(4000),
+  category_id: z.string(),
+  category_name: z.string().optional(),
+  condition: z.object({
+    id: z.string(),
+    description: z.string(),
+  }),
+  price: z.object({
+    value: z.number().positive(),
+    currency: z.string().default('USD'),
+  }),
+  quantity: z.number().int().positive().default(1),
+  image_urls: z.array(z.string().url()).min(1).max(12),
+  item_specifics: z.record(z.string(), z.string()),
+  format: z.literal('FIXED_PRICE'),
+  policies: z
+    .object({
+      fulfillment_policy_id: z.string().optional(),
+      payment_policy_id: z.string().optional(),
+      return_policy_id: z.string().optional(),
+    })
+    .optional(),
+});
+export type EbayListingDraft = z.infer<typeof EbayListingDraftSchema>;
+
+/**
+ * Payload for eBay Inventory API createOrReplaceInventoryItem
+ */
+export const EbayInventoryItemPayloadSchema = z.object({
+  sku: z.string().max(50),
+  locale: z.string().default('en_US'),
+  product: z.object({
+    title: z.string().max(80),
+    description: z.string().max(4000),
+    imageUrls: z.array(z.string().url()).min(1).max(12),
+    aspects: z.record(z.string(), z.array(z.string())),
+  }),
+  condition: z.string(),
+  conditionDescription: z.string().optional(),
+  availability: z.object({
+    shipToLocationAvailability: z.object({
+      quantity: z.number().int().min(0),
+    }),
+  }),
+});
+export type EbayInventoryItemPayload = z.infer<typeof EbayInventoryItemPayloadSchema>;
+
+/**
+ * Payload for eBay Inventory API createOffer
+ */
+export const EbayOfferPayloadSchema = z.object({
+  sku: z.string(),
+  marketplaceId: EbayMarketplaceEnum,
+  format: z.literal('FIXED_PRICE'),
+  categoryId: z.string(),
+  pricingSummary: z.object({
+    price: z.object({
+      value: z.string(), // String for precision
+      currency: z.string().default('USD'),
+    }),
+  }),
+  availableQuantity: z.number().int().positive(),
+  listingPolicies: z.object({
+    fulfillmentPolicyId: z.string(),
+    paymentPolicyId: z.string(),
+    returnPolicyId: z.string(),
+  }),
+  merchantLocationKey: z.string().optional(),
+});
+export type EbayOfferPayload = z.infer<typeof EbayOfferPayloadSchema>;
+
+/**
+ * Result of publishing a listing
+ */
+export const EbayPublishResultSchema = z.object({
+  success: z.boolean(),
+  listing_id: z.string().optional(),
+  offer_id: z.string().optional(),
+  sku: z.string().optional(),
+  listing_url: z.string().url().optional(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      details: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
+  warnings: z
+    .array(
+      z.object({
+        code: z.string(),
+        message: z.string(),
+      })
+    )
+    .optional(),
+  published_at: z.string().datetime().optional(),
+  attempted_at: z.string().datetime(),
+});
+export type EbayPublishResult = z.infer<typeof EbayPublishResultSchema>;
+
+// =============================================================================
+// POLICY SCHEMAS
+// =============================================================================
+
+/**
+ * eBay fulfillment policy summary
+ */
+export const EbayFulfillmentPolicySchema = z.object({
+  policy_id: z.string(),
+  name: z.string(),
+  marketplace_id: EbayMarketplaceEnum,
+  shipping_options: z.array(
+    z.object({
+      shipping_service: z.string(),
+      cost: z.number().optional(),
+    })
+  ),
+});
+export type EbayFulfillmentPolicy = z.infer<typeof EbayFulfillmentPolicySchema>;
+
+/**
+ * eBay payment policy summary
+ */
+export const EbayPaymentPolicySchema = z.object({
+  policy_id: z.string(),
+  name: z.string(),
+  marketplace_id: EbayMarketplaceEnum,
+  payment_methods: z.array(z.string()),
+});
+export type EbayPaymentPolicy = z.infer<typeof EbayPaymentPolicySchema>;
+
+/**
+ * eBay return policy summary
+ */
+export const EbayReturnPolicySchema = z.object({
+  policy_id: z.string(),
+  name: z.string(),
+  marketplace_id: EbayMarketplaceEnum,
+  returns_accepted: z.boolean(),
+  return_period: z.string().optional(),
+});
+export type EbayReturnPolicy = z.infer<typeof EbayReturnPolicySchema>;
+
+/**
+ * Combined user policies response
+ */
+export const EbayUserPoliciesSchema = z.object({
+  fulfillment: z.array(EbayFulfillmentPolicySchema),
+  payment: z.array(EbayPaymentPolicySchema),
+  return: z.array(EbayReturnPolicySchema),
+  fetched_at: z.string().datetime(),
+});
+export type EbayUserPolicies = z.infer<typeof EbayUserPoliciesSchema>;
+
+// =============================================================================
+// ERROR SCHEMAS
+// =============================================================================
+
+/**
+ * Standardized error response
+ */
+export const EbayApiErrorSchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    ebay_error_id: z.string().optional(),
+  }),
+  recovery: z
+    .object({
+      action: EbayErrorRecoveryActionEnum,
+      retry_after: z.number().int().optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
+  request_id: z.string(),
+  timestamp: z.string().datetime(),
+});
+export type EbayApiError = z.infer<typeof EbayApiErrorSchema>;
+
+// =============================================================================
+// DATABASE RECORD EXTENSIONS
+// =============================================================================
+
+/**
+ * eBay-specific fields for listings table
+ */
+export const ListingEbayFieldsSchema = z.object({
+  pricing_comps: EbayCompsResultSchema.nullable().optional(),
+  ebay_publish: EbayPublishResultSchema.nullable().optional(),
+  ebay_offer_id: z.string().nullable().optional(),
+  ebay_sku: z.string().nullable().optional(),
+  ebay_listing_id: z.string().nullable().optional(),
+  ebay_published_at: z.string().datetime().nullable().optional(),
+});
+export type ListingEbayFields = z.infer<typeof ListingEbayFieldsSchema>;
+
+/**
+ * eBay account database record
+ */
+export const EbayAccountRecordSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  ebay_user_id: z.string(),
+  ebay_username: z.string().nullable(),
+  access_token_encrypted: z.string(),
+  refresh_token_encrypted: z.string(),
+  access_token_expires_at: z.string().datetime(),
+  refresh_token_expires_at: z.string().datetime(),
+  scopes: z.array(z.string()),
+  marketplace_id: EbayMarketplaceEnum,
+  status: EbayAccountStatusEnum,
+  connected_at: z.string().datetime(),
+  last_used_at: z.string().datetime().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+export type EbayAccountRecord = z.infer<typeof EbayAccountRecordSchema>;
+
+/**
+ * OAuth state record for CSRF protection
+ */
+export const EbayAuthStateRecordSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  state: z.string(),
+  redirect_context: EbayRedirectContextEnum,
+  expires_at: z.string().datetime(),
+  used_at: z.string().datetime().nullable(),
+  created_at: z.string().datetime(),
+});
+export type EbayAuthStateRecord = z.infer<typeof EbayAuthStateRecordSchema>;
+
+// =============================================================================
+// API REQUEST/RESPONSE SCHEMAS
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/comps request (query params)
+ */
+export const GetEbayCompsRequestSchema = EbayCompsQuerySchema;
+export type GetEbayCompsRequest = z.infer<typeof GetEbayCompsRequestSchema>;
+
+/**
+ * POST /api/v1/listings/:id/ebay/publish request
+ */
+export const PublishToEbayRequestSchema = z.object({
+  policies: z
+    .object({
+      fulfillment_policy_id: z.string(),
+      payment_policy_id: z.string(),
+      return_policy_id: z.string(),
+    })
+    .optional(),
+  price_override: z.number().positive().optional(),
+});
+export type PublishToEbayRequest = z.infer<typeof PublishToEbayRequestSchema>;
+
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+/**
+ * eBay API URLs by environment
+ */
+export const EBAY_API_URLS = {
+  sandbox: {
+    auth: 'https://auth.sandbox.ebay.com/oauth2/authorize',
+    token: 'https://api.sandbox.ebay.com/identity/v1/oauth2/token',
+    api: 'https://api.sandbox.ebay.com',
+  },
+  production: {
+    auth: 'https://auth.ebay.com/oauth2/authorize',
+    token: 'https://api.ebay.com/identity/v1/oauth2/token',
+    api: 'https://api.ebay.com',
+  },
+} as const;
+
+/**
+ * Required eBay OAuth scopes for listing
+ */
+export const EBAY_REQUIRED_SCOPES = [
+  'https://api.ebay.com/oauth/api_scope',
+  'https://api.ebay.com/oauth/api_scope/sell.inventory',
+  'https://api.ebay.com/oauth/api_scope/sell.account',
+  'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+] as const;
+
+/**
+ * Comps confidence thresholds
+ */
+export const COMPS_CONFIDENCE_THRESHOLDS = {
+  HIGH: 10, // 10+ sold items = high confidence
+  MEDIUM: 5, // 5-9 items = medium
+  LOW: 1, // 1-4 items = low
+} as const;
+
+/**
+ * Comps cache TTL (15 minutes)
+ */
+export const COMPS_CACHE_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Token refresh window (5 minutes before expiry)
+ */
+export const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * UI display messages for pricing source (required by spec)
+ */
+export const COMPS_SOURCE_MESSAGES = {
+  sold: (count: number) => `Based on ${count} recently sold items`,
+  active: (count: number) =>
+    `Based on ${count} active listings (no recent sales data)`,
+  none: () => 'No comparable items found',
+} as const;
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Determine confidence level from sample size
+ */
+export function getCompsConfidence(
+  sampleSize: number,
+  source: EbayCompsSource
+): EbayCompsConfidence {
+  if (sampleSize === 0 || source === 'none') return 'none';
+  if (source === 'active') return 'medium'; // Active listings always medium
+  if (sampleSize >= COMPS_CONFIDENCE_THRESHOLDS.HIGH) return 'high';
+  if (sampleSize >= COMPS_CONFIDENCE_THRESHOLDS.MEDIUM) return 'medium';
+  return 'low';
+}
+
+/**
+ * Calculate median from array of numbers
+ */
+export function calculateMedian(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Calculate average from array of numbers
+ */
+export function calculateAverage(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/**
+ * Generate a unique SKU for eBay inventory
+ */
+export function generateEbaySku(listingId: string): string {
+  const timestamp = Date.now().toString(36);
+  const shortId = listingId.split('-')[0];
+  return `RSAI-${shortId}-${timestamp}`.toUpperCase();
+}
+
+/**
+ * Check if token needs refresh
+ */
+export function tokenNeedsRefresh(expiresAt: string): boolean {
+  const expiryTime = new Date(expiresAt).getTime();
+  const now = Date.now();
+  return expiryTime - now <= TOKEN_REFRESH_WINDOW_MS;
+}
+
+/**
+ * Generate comps source message for UI
+ */
+export function getCompsSourceMessage(
+  source: EbayCompsSource,
+  sampleSize: number
+): string {
+  return COMPS_SOURCE_MESSAGES[source](sampleSize);
+}
