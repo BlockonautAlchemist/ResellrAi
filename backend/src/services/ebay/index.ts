@@ -13,6 +13,9 @@ export { EbayCompsService, getEbayCompsService } from './comps.js';
 // Policy service
 export { EbayPolicyService, getEbayPolicyService } from './policy.js';
 
+// Location service (required for publishing - EBAY_SOURCE_OF_TRUTH.md Section 7)
+export { EbayLocationService, getEbayLocationService } from './location.js';
+
 // Listing service
 export { EbayListingService, getEbayListingService } from './listing.js';
 

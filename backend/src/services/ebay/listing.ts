@@ -13,6 +13,7 @@
 import { getEbayClient } from './client.js';
 import { getEbayAuthService } from './auth.js';
 import { getEbayPolicyService } from './policy.js';
+import { getEbayLocationService } from './location.js';
 import {
   generateEbaySku,
   type EbayInventoryItemPayload,
@@ -71,11 +72,13 @@ export class EbayListingService {
   private ebayClient: ReturnType<typeof getEbayClient>;
   private authService: ReturnType<typeof getEbayAuthService>;
   private policyService: ReturnType<typeof getEbayPolicyService>;
+  private locationService: ReturnType<typeof getEbayLocationService>;
 
   constructor() {
     this.ebayClient = getEbayClient();
     this.authService = getEbayAuthService();
     this.policyService = getEbayPolicyService();
+    this.locationService = getEbayLocationService();
   }
 
   /**
@@ -117,11 +120,23 @@ export class EbayListingService {
       // Step 2: Get access token
       const accessToken = await this.authService.getAccessToken(userId);
 
-      // Step 3: Generate SKU
+      // Step 3: Ensure inventory location exists (REQUIRED per EBAY_SOURCE_OF_TRUTH.md Section 7)
+      const locationResult = await this.locationService.ensureLocationExists(userId);
+      if (!locationResult.success || !locationResult.locationKey) {
+        return this.errorResult(
+          'LOCATION_REQUIRED',
+          locationResult.error || 'Please set up a shipping location before listing',
+          attemptedAt
+        );
+      }
+      const locationKey = locationResult.locationKey;
+      console.log(`[eBay Listing] Using location: ${locationKey}`);
+
+      // Step 4: Generate SKU
       const sku = generateEbaySku(draft.listing_id);
       console.log(`[eBay Listing] Generated SKU: ${sku}`);
 
-      // Step 4: Create/update inventory item
+      // Step 5: Create/update inventory item
       const inventoryResult = await this.createInventoryItem(accessToken, sku, draft);
       if (!inventoryResult.success) {
         return this.errorResult(
@@ -131,8 +146,8 @@ export class EbayListingService {
         );
       }
 
-      // Step 5: Create offer
-      const offerResult = await this.createOffer(accessToken, sku, draft, policies);
+      // Step 6: Create offer (with required merchantLocationKey)
+      const offerResult = await this.createOffer(accessToken, sku, draft, policies, locationKey);
       if (!offerResult.success || !offerResult.offerId) {
         return this.errorResult(
           'OFFER_CREATE_FAILED',
@@ -145,7 +160,7 @@ export class EbayListingService {
         warnings.push(...offerResult.warnings);
       }
 
-      // Step 6: Publish offer
+      // Step 7: Publish offer
       const publishResult = await this.publishOffer(accessToken, offerResult.offerId);
       if (!publishResult.success || !publishResult.listingId) {
         return this.errorResult(
@@ -243,6 +258,9 @@ export class EbayListingService {
 
   /**
    * Create offer for inventory item
+   *
+   * merchantLocationKey is REQUIRED per EBAY_SOURCE_OF_TRUTH.md Section 7:
+   * "If you don't provide a location, you cannot publish"
    */
   private async createOffer(
     accessToken: string,
@@ -252,7 +270,8 @@ export class EbayListingService {
       fulfillment_policy_id: string;
       payment_policy_id: string;
       return_policy_id: string;
-    }
+    },
+    locationKey: string
   ): Promise<{
     success: boolean;
     offerId?: string;
@@ -265,6 +284,7 @@ export class EbayListingService {
         marketplaceId: 'EBAY_US',
         format: 'FIXED_PRICE',
         categoryId: draft.category_id,
+        merchantLocationKey: locationKey, // Required per EBAY_SOURCE_OF_TRUTH.md Section 7
         pricingSummary: {
           price: {
             value: draft.price.value.toFixed(2),

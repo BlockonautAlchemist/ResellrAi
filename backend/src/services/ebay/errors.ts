@@ -48,6 +48,18 @@ export const EBAY_ERROR_CODES = {
   OFFER_PUBLISH_FAILED: 'OFFER_PUBLISH_FAILED',
   PUBLISH_ERROR: 'PUBLISH_ERROR',
 
+  // Location errors (per EBAY_SOURCE_OF_TRUTH.md Section 7)
+  LOCATION_REQUIRED: 'LOCATION_REQUIRED',
+  LOCATION_CREATE_FAILED: 'LOCATION_CREATE_FAILED',
+  LOCATION_INVALID: 'LOCATION_INVALID',
+  LOCATIONS_FETCH_FAILED: 'LOCATIONS_FETCH_FAILED',
+
+  // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
+  SELLING_LIMIT_EXCEEDED: 'SELLING_LIMIT_EXCEEDED',
+  CATEGORY_RESTRICTED: 'CATEGORY_RESTRICTED',
+  DUPLICATE_LISTING: 'DUPLICATE_LISTING',
+  ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
+
   // Comps errors
   COMPS_FETCH_FAILED: 'COMPS_FETCH_FAILED',
 
@@ -101,6 +113,18 @@ export const EBAY_ERROR_MESSAGES: Record<EbayErrorCode, string> = {
   OFFER_CREATE_FAILED: 'Failed to create offer on eBay',
   OFFER_PUBLISH_FAILED: 'Failed to publish listing to eBay',
   PUBLISH_ERROR: 'An error occurred while publishing',
+
+  // Location (per EBAY_SOURCE_OF_TRUTH.md Section 7)
+  LOCATION_REQUIRED: 'Please set up a shipping location before listing',
+  LOCATION_CREATE_FAILED: 'Failed to create shipping location on eBay',
+  LOCATION_INVALID: 'Invalid location address. Please provide city/state or postal code.',
+  LOCATIONS_FETCH_FAILED: 'Failed to fetch shipping locations',
+
+  // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
+  SELLING_LIMIT_EXCEEDED: "You've reached your eBay selling limit. Request higher limits in eBay Seller Hub.",
+  CATEGORY_RESTRICTED: 'This category requires approval. Check eBay Seller Hub for requirements.',
+  DUPLICATE_LISTING: 'You already have a similar listing active. Use multi-quantity instead of duplicates.',
+  ACCOUNT_SUSPENDED: 'Your eBay selling privileges are restricted. Check your eBay account status.',
 
   // Comps
   COMPS_FETCH_FAILED: 'Failed to fetch pricing comparables',
@@ -161,6 +185,18 @@ const RECOVERY_ACTIONS: Record<EbayErrorCode, EbayErrorRecoveryAction> = {
   PUBLISH_ERROR: 'retry',
   INTERNAL_ERROR: 'contact_support',
   UNKNOWN_ERROR: 'contact_support',
+
+  // Location errors
+  LOCATION_REQUIRED: 'none', // User must set up location
+  LOCATION_CREATE_FAILED: 'retry',
+  LOCATION_INVALID: 'none', // User must fix address
+  LOCATIONS_FETCH_FAILED: 'retry',
+
+  // Business errors - user must resolve via eBay
+  SELLING_LIMIT_EXCEEDED: 'none',
+  CATEGORY_RESTRICTED: 'none',
+  DUPLICATE_LISTING: 'none',
+  ACCOUNT_SUSPENDED: 'none',
 };
 
 // =============================================================================
@@ -282,6 +318,11 @@ function generateRequestId(): string {
 
 /**
  * Map eBay error codes to our internal codes
+ *
+ * Per EBAY_SOURCE_OF_TRUTH.md Section 9, specific error codes:
+ * - 21919188: Monthly selling limit exceeded
+ * - 21916013: Item selling limit exceeded
+ * - 25003: merchantLocationKey required
  */
 export function classifyEbayError(
   ebayErrorId: string,
@@ -293,7 +334,30 @@ export function classifyEbayError(
   if (httpStatus === 429) return 'RATE_LIMITED';
   if (httpStatus >= 500) return 'EBAY_API_ERROR';
 
-  // eBay error ID based classification
+  // Specific eBay error ID mappings (per EBAY_SOURCE_OF_TRUTH.md Section 9)
+  const EBAY_ERROR_ID_MAP: Record<string, EbayErrorCode> = {
+    // Selling limit errors
+    '21919188': 'SELLING_LIMIT_EXCEEDED', // Monthly limit
+    '21916013': 'SELLING_LIMIT_EXCEEDED', // Item limit
+    '21919144': 'RATE_LIMITED', // Call rate limit (seller-level)
+
+    // Inventory/location errors
+    '25003': 'LOCATION_REQUIRED', // merchantLocationKey missing
+
+    // Duplicate listing
+    '21916012': 'DUPLICATE_LISTING',
+
+    // Category/policy restrictions
+    '21916014': 'CATEGORY_RESTRICTED',
+    '21916289': 'POLICIES_MISSING',
+  };
+
+  // Check for specific error IDs first
+  if (EBAY_ERROR_ID_MAP[ebayErrorId]) {
+    return EBAY_ERROR_ID_MAP[ebayErrorId];
+  }
+
+  // Fall back to range-based classification
   const errorIdNum = parseInt(ebayErrorId, 10);
 
   // Auth errors (1xxx)
@@ -302,8 +366,11 @@ export function classifyEbayError(
   // Validation errors (2xxx)
   if (errorIdNum >= 2000 && errorIdNum < 3000) return 'VALIDATION_ERROR';
 
-  // Business logic errors (25xxx)
+  // Business logic errors (25xxx) - inventory/offer related
   if (errorIdNum >= 25000 && errorIdNum < 26000) return 'LISTING_INVALID';
+
+  // Selling limit errors (21919xxx range)
+  if (errorIdNum >= 21919000 && errorIdNum < 21920000) return 'SELLING_LIMIT_EXCEEDED';
 
   return 'EBAY_API_ERROR';
 }

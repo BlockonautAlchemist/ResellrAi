@@ -183,9 +183,10 @@ export class EbayAuthService {
       now + (tokens.refresh_token_expires_in || 47304000) * 1000 // Default 18 months
     );
 
-    // Get eBay user info (optional - we'll use a placeholder for now)
-    // In production, you'd call the eBay Identity API to get user details
-    const ebayUserId = `ebay_${Date.now()}`; // Placeholder - replace with actual user ID lookup
+    // Get eBay user info from Identity API
+    const userInfo = await this.getEbayUserInfo(tokens.access_token);
+    const ebayUserId = userInfo.userId;
+    const ebayUsername = userInfo.username;
 
     // Encrypt tokens
     const accessTokenEncrypted = encryptToken(tokens.access_token);
@@ -198,6 +199,7 @@ export class EbayAuthService {
         {
           user_id: storedState.user_id,
           ebay_user_id: ebayUserId,
+          ebay_username: ebayUsername || null,
           access_token_encrypted: accessTokenEncrypted,
           refresh_token_encrypted: refreshTokenEncrypted,
           access_token_expires_at: accessTokenExpiresAt.toISOString(),
@@ -363,6 +365,53 @@ export class EbayAuthService {
 
     console.log(`[eBay Auth] Disconnected eBay account for user ${userId}`);
     return true;
+  }
+
+  /**
+   * Get eBay user info from the Identity API
+   *
+   * Calls GET /commerce/identity/v1/user/ to retrieve the authenticated user's
+   * eBay user ID and username.
+   *
+   * Per EBAY_SOURCE_OF_TRUTH.md Section 5:
+   * "there is an OAuth getUser call (GetUser API or Identity API) if you need
+   * the owner's eBay user ID"
+   */
+  private async getEbayUserInfo(
+    accessToken: string
+  ): Promise<{ userId: string; username?: string }> {
+    try {
+      const response = await this.ebayClient.authenticatedRequest<{
+        userId: string;
+        username?: string;
+        accountType?: string;
+      }>(accessToken, {
+        method: 'GET',
+        path: '/commerce/identity/v1/user/',
+      });
+
+      if (response.success && response.data) {
+        console.log(`[eBay Auth] Retrieved user info: ${response.data.username || response.data.userId}`);
+        return {
+          userId: response.data.userId,
+          username: response.data.username,
+        };
+      }
+
+      // If Identity API fails, generate a fallback ID
+      console.warn('[eBay Auth] Identity API call failed, using fallback user ID');
+      return {
+        userId: `ebay_${Date.now()}`,
+        username: undefined,
+      };
+    } catch (error) {
+      // Don't fail the entire OAuth flow if we can't get user info
+      console.warn('[eBay Auth] Failed to get user info from Identity API:', error);
+      return {
+        userId: `ebay_${Date.now()}`,
+        username: undefined,
+      };
+    }
   }
 
   /**

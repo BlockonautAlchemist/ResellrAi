@@ -20,6 +20,7 @@ import {
   getEbayCompsService,
   getEbayPolicyService,
   getEbayListingService,
+  getEbayLocationService,
   isEbayAvailable,
   createErrorResponse,
   EBAY_ERROR_CODES,
@@ -32,6 +33,7 @@ import {
   EbayUserPoliciesSchema,
   EbayPublishResultSchema,
   PublishToEbayRequestSchema,
+  CreateLocationRequestSchema,
   getCompsSourceMessage,
 } from '../types/ebay-schemas.js';
 
@@ -87,6 +89,61 @@ router.get('/status', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/ebay/debug
+ * Debug endpoint to verify OAuth configuration (dev only)
+ * Shows configuration status without exposing secrets
+ */
+router.get('/debug', (req: Request, res: Response) => {
+  // Only allow in development
+  if (env.NODE_ENV === 'production') {
+    res.status(403).json({ error: 'Debug endpoint not available in production' });
+    return;
+  }
+
+  const hasClientId = !!env.EBAY_CLIENT_ID;
+  const hasClientSecret = !!env.EBAY_CLIENT_SECRET;
+  const hasRuName = !!env.EBAY_RUNAME;
+  const hasEncryptionKey = !!env.EBAY_TOKEN_ENCRYPTION_KEY;
+
+  const expectedCallbackUrl = `${env.APP_BASE_URL}/api/v1/ebay/oauth/callback`;
+
+  res.json({
+    configuration: {
+      environment: env.EBAY_ENVIRONMENT,
+      client_id_set: hasClientId,
+      client_id_preview: hasClientId ? `${env.EBAY_CLIENT_ID!.substring(0, 8)}...` : null,
+      client_secret_set: hasClientSecret,
+      runame_set: hasRuName,
+      runame_preview: hasRuName ? env.EBAY_RUNAME : null,
+      encryption_key_set: hasEncryptionKey,
+      app_base_url: env.APP_BASE_URL,
+      deep_link_scheme: env.MOBILE_DEEP_LINK_SCHEME,
+    },
+    oauth_urls: {
+      authorize: `https://auth.${env.EBAY_ENVIRONMENT === 'sandbox' ? 'sandbox.' : ''}ebay.com/oauth2/authorize`,
+      token: `https://api.${env.EBAY_ENVIRONMENT === 'sandbox' ? 'sandbox.' : ''}ebay.com/identity/v1/oauth2/token`,
+    },
+    setup_checklist: {
+      '1_credentials': hasClientId && hasClientSecret
+        ? 'OK - Client ID and Secret configured'
+        : 'MISSING - Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET',
+      '2_runame': hasRuName
+        ? 'OK - RuName configured'
+        : 'MISSING - Set EBAY_RUNAME (get from eBay Developer Portal)',
+      '3_encryption': hasEncryptionKey
+        ? 'OK - Token encryption key configured'
+        : 'MISSING - Generate with: openssl rand -hex 32',
+      '4_callback_url': `Ensure eBay RuName "Auth Accepted URL" is set to: ${expectedCallbackUrl}`,
+    },
+    troubleshooting: {
+      issue: 'User sees eBay "Thank You" page instead of being redirected',
+      cause: 'RuName Auth Accepted URL is not configured correctly in eBay Developer Portal',
+      solution: `Set "Auth Accepted URL" to: ${expectedCallbackUrl}`,
+    },
+  });
+});
+
+/**
  * GET /api/v1/ebay/oauth/start
  * Start OAuth flow - returns authorization URL
  *
@@ -135,6 +192,14 @@ router.get('/oauth/start', requireEbayConfig, async (req: Request, res: Response
  * - error_description: Error details
  */
 router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Response) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[eBay Routes] OAuth callback received at ${timestamp}`);
+  console.log(`[eBay Routes] Query params:`, {
+    code: req.query.code ? `${String(req.query.code).substring(0, 20)}...` : undefined,
+    state: req.query.state ? `${String(req.query.state).substring(0, 8)}...` : undefined,
+    error: req.query.error,
+  });
+
   try {
     const { code, state, error, error_description } = req.query;
 
@@ -145,14 +210,25 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
       // Redirect to mobile app with error
       const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?error=${encodeURIComponent(String(error))}&message=${encodeURIComponent(String(error_description || 'Access denied'))}`;
 
-      res.send(generateCallbackPage(false, 'eBay connection was denied', deepLink));
+      res.send(generateCallbackPage(
+        false,
+        'You declined to connect your eBay account. You can try again from the app.',
+        deepLink,
+        { error: String(error), timestamp }
+      ));
       return;
     }
 
     // Validate required params
     if (!code || !state) {
+      console.error('[eBay Routes] Missing code or state in callback');
       res.status(400).send(
-        generateCallbackPage(false, 'Missing authorization code or state', null)
+        generateCallbackPage(
+          false,
+          'Missing authorization data. This may happen if the redirect URL is not configured correctly in eBay Developer Portal.',
+          null,
+          { error: 'Missing code or state parameter', timestamp }
+        )
       );
       return;
     }
@@ -161,17 +237,29 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     const authService = getEbayAuthService();
     const result = await authService.handleCallback(String(code), String(state));
 
+    console.log(`[eBay Routes] OAuth success for user ${result.userId}`);
+
     // Generate success deep link
     const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?success=true`;
 
-    res.send(generateCallbackPage(true, 'eBay account connected successfully!', deepLink));
+    res.send(generateCallbackPage(
+      true,
+      'Your eBay account is now connected! You can list items directly to eBay from the app.',
+      deepLink,
+      { userId: result.userId, timestamp }
+    ));
   } catch (error) {
     console.error('[eBay Routes] OAuth callback error:', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Connection failed';
     const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?error=callback_failed&message=${encodeURIComponent(errorMessage)}`;
 
-    res.send(generateCallbackPage(false, errorMessage, deepLink));
+    res.send(generateCallbackPage(
+      false,
+      errorMessage,
+      deepLink,
+      { error: errorMessage, timestamp }
+    ));
   }
 });
 
@@ -394,6 +482,173 @@ router.get('/policies', requireEbayConfig, async (req: Request, res: Response) =
 });
 
 // =============================================================================
+// INVENTORY LOCATION ROUTES
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/locations
+ * Get user's inventory locations
+ *
+ * Per EBAY_SOURCE_OF_TRUTH.md Section 7:
+ * "eBay requires that inventory items be assigned to an inventory location"
+ */
+router.get('/locations', requireEbayConfig, async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'User authentication required',
+        },
+      });
+      return;
+    }
+
+    // Check if eBay is connected
+    const authService = getEbayAuthService();
+    const account = await authService.getConnectedAccount(userId);
+
+    if (!account.connected) {
+      res.status(403).json({
+        error: {
+          code: 'EBAY_NOT_CONNECTED',
+          message: 'Please connect your eBay account first',
+        },
+      });
+      return;
+    }
+
+    // Fetch locations
+    const locationService = getEbayLocationService();
+    const result = await locationService.getInventoryLocations(userId);
+
+    if (!result.success) {
+      res.status(500).json({
+        error: {
+          code: 'LOCATIONS_FETCH_FAILED',
+          message: result.error || 'Failed to fetch locations',
+        },
+      });
+      return;
+    }
+
+    res.json({
+      locations: result.locations,
+      total: result.total,
+    });
+  } catch (error) {
+    console.error('[eBay Routes] Locations error:', error);
+    res.status(500).json({
+      error: {
+        code: 'LOCATIONS_FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to fetch locations',
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/v1/ebay/locations
+ * Create an inventory location
+ *
+ * Body:
+ * - name?: string (optional, defaults to "Default Shipping Location")
+ * - addressLine1?: string
+ * - city?: string
+ * - stateOrProvince?: string
+ * - postalCode?: string
+ * - country?: string (default: "US")
+ *
+ * Per EBAY_SOURCE_OF_TRUTH.md Section 7:
+ * "You need to supply an address (country, and either city+state or postal code)"
+ */
+router.post('/locations', requireEbayConfig, async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'User authentication required',
+        },
+      });
+      return;
+    }
+
+    // Check if eBay is connected
+    const authService = getEbayAuthService();
+    const account = await authService.getConnectedAccount(userId);
+
+    if (!account.connected) {
+      res.status(403).json({
+        error: {
+          code: 'EBAY_NOT_CONNECTED',
+          message: 'Please connect your eBay account first',
+        },
+      });
+      return;
+    }
+
+    // Validate request body
+    const locationData = CreateLocationRequestSchema.parse(req.body);
+
+    // Validate that we have enough address info
+    const hasPostalCode = !!locationData.postalCode;
+    const hasCityState = !!locationData.city && !!locationData.stateOrProvince;
+
+    if (!hasPostalCode && !hasCityState) {
+      res.status(400).json({
+        error: {
+          code: 'ADDRESS_REQUIRED',
+          message: 'Please provide either postalCode OR (city and stateOrProvince)',
+        },
+      });
+      return;
+    }
+
+    // Create location
+    const locationService = getEbayLocationService();
+    const result = await locationService.createInventoryLocation(userId, locationData);
+
+    if (!result.success) {
+      res.status(400).json({
+        error: {
+          code: 'LOCATION_CREATE_FAILED',
+          message: result.error || 'Failed to create location',
+        },
+      });
+      return;
+    }
+
+    res.status(201).json({
+      success: true,
+      location: result.location,
+    });
+  } catch (error) {
+    console.error('[eBay Routes] Create location error:', error);
+
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request data',
+          details: error.errors,
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'LOCATION_CREATE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to create location',
+      },
+    });
+  }
+});
+
+// =============================================================================
 // LISTING PUBLISH ROUTES
 // =============================================================================
 
@@ -560,15 +815,23 @@ router.get('/listings/:id/status', requireEbayConfig, async (req: Request, res: 
 /**
  * Generate HTML page for OAuth callback
  * This page displays status and triggers mobile deep link
+ *
+ * Features:
+ * - Auto-redirect via deep link with multiple attempts
+ * - Clear status message and visual feedback
+ * - Debug info for developers (collapsible)
+ * - Fallback instructions if redirect fails
  */
 function generateCallbackPage(
   success: boolean,
   message: string,
-  deepLink: string | null
+  deepLink: string | null,
+  debugInfo?: { userId?: string; timestamp?: string; error?: string }
 ): string {
   const statusColor = success ? '#22c55e' : '#ef4444';
   const statusIcon = success ? '&#10003;' : '&#10007;';
-  const statusText = success ? 'Success' : 'Error';
+  const statusText = success ? 'Connected!' : 'Connection Failed';
+  const timestamp = new Date().toISOString();
 
   return `
 <!DOCTYPE html>
@@ -576,13 +839,9 @@ function generateCallbackPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ResellrAI - eBay Connection</title>
+  <title>ResellrAI - eBay ${success ? 'Connected' : 'Error'}</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -592,67 +851,157 @@ function generateCallbackPage(
       justify-content: center;
       color: #fff;
     }
-    .container {
-      text-align: center;
-      padding: 40px;
-      max-width: 400px;
-    }
+    .container { text-align: center; padding: 40px; max-width: 420px; }
     .icon {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
+      width: 80px; height: 80px; border-radius: 50%;
       background: ${statusColor};
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 24px;
-      font-size: 40px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px; font-size: 40px;
+      animation: ${success ? 'pulse' : 'shake'} 0.5s ease-out;
     }
-    h1 {
-      font-size: 24px;
-      margin-bottom: 12px;
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 0; }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
     }
-    p {
-      color: #94a3b8;
-      margin-bottom: 24px;
-      line-height: 1.5;
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
     }
+    h1 { font-size: 28px; margin-bottom: 12px; }
+    .message { color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
     .button {
-      display: inline-block;
-      background: #3b82f6;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 500;
-      transition: background 0.2s;
+      display: inline-block; background: #3b82f6; color: white;
+      padding: 14px 28px; border-radius: 10px; text-decoration: none;
+      font-weight: 600; font-size: 16px; transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
     }
-    .button:hover {
-      background: #2563eb;
+    .button:hover { background: #2563eb; transform: translateY(-1px); }
+    .button:active { transform: translateY(0); }
+    .redirect-status {
+      margin-top: 20px; padding: 12px 16px;
+      background: rgba(255,255,255,0.1); border-radius: 8px;
+      font-size: 14px; color: #cbd5e1;
     }
-    .auto-redirect {
-      margin-top: 16px;
-      font-size: 14px;
-      color: #64748b;
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px; vertical-align: middle;
     }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fallback {
+      margin-top: 24px; padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 13px; color: #64748b;
+    }
+    .debug-toggle {
+      margin-top: 32px; font-size: 12px; color: #475569;
+      cursor: pointer; user-select: none;
+    }
+    .debug-toggle:hover { color: #64748b; }
+    .debug-info {
+      display: none; margin-top: 12px; padding: 12px;
+      background: rgba(0,0,0,0.3); border-radius: 8px;
+      text-align: left; font-family: monospace; font-size: 11px;
+      color: #94a3b8; word-break: break-all;
+    }
+    .debug-info.show { display: block; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="icon">${statusIcon}</div>
     <h1>${statusText}</h1>
-    <p>${message}</p>
+    <p class="message">${message}</p>
+
     ${deepLink ? `
-      <a href="${deepLink}" class="button">Return to App</a>
-      <p class="auto-redirect">Redirecting automatically...</p>
+      <a href="${deepLink}" class="button" id="openAppBtn">Open ResellrAI</a>
+
+      <div class="redirect-status" id="redirectStatus">
+        <span class="spinner"></span>
+        <span id="statusText">Returning to app...</span>
+      </div>
+
+      <div class="fallback" id="fallback" style="display: none;">
+        <p>If the app doesn't open automatically:</p>
+        <p style="margin-top: 8px;">1. Tap the button above, or</p>
+        <p>2. Switch back to the ResellrAI app manually</p>
+      </div>
+
       <script>
-        setTimeout(function() {
-          window.location.href = "${deepLink}";
-        }, 1500);
+        (function() {
+          var deepLink = "${deepLink}";
+          var attempts = 0;
+          var maxAttempts = 3;
+          var redirected = false;
+
+          function tryRedirect() {
+            attempts++;
+            console.log('[OAuth Callback] Redirect attempt ' + attempts);
+
+            // Try to open the deep link
+            window.location.href = deepLink;
+
+            // Check if we're still here after a delay
+            setTimeout(function() {
+              if (!redirected && attempts < maxAttempts) {
+                document.getElementById('statusText').textContent =
+                  'Trying again... (attempt ' + (attempts + 1) + ')';
+                tryRedirect();
+              } else if (!redirected) {
+                // Show fallback after all attempts
+                document.getElementById('redirectStatus').innerHTML =
+                  'Automatic redirect may not have worked.';
+                document.getElementById('fallback').style.display = 'block';
+              }
+            }, 2000);
+          }
+
+          // Start redirect after brief delay (allows page to render)
+          setTimeout(function() {
+            tryRedirect();
+          }, 800);
+
+          // Also detect if page becomes hidden (redirect worked)
+          document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+              redirected = true;
+              console.log('[OAuth Callback] Page hidden - redirect likely succeeded');
+            }
+          });
+        })();
       </script>
     ` : `
-      <p>You can close this window.</p>
+      <p class="message">You can close this browser tab and return to the app.</p>
+      <div class="fallback">
+        <p>${success ? 'Your connection should be active when you return to the app.' : 'Please try connecting again from within the app.'}</p>
+      </div>
     `}
+
+    <div class="debug-toggle" onclick="toggleDebug()">
+      Developer Info ▼
+    </div>
+    <div class="debug-info" id="debugInfo">
+      <div>Status: ${success ? 'SUCCESS' : 'ERROR'}</div>
+      <div>Timestamp: ${timestamp}</div>
+      ${deepLink ? `<div>Deep Link: ${deepLink}</div>` : ''}
+      ${debugInfo?.userId ? `<div>User ID: ${debugInfo.userId}</div>` : ''}
+      ${debugInfo?.error ? `<div>Error: ${debugInfo.error}</div>` : ''}
+      <div style="margin-top: 8px; color: #64748b;">
+        If redirect fails, ensure RuName is configured correctly in eBay Developer Portal.
+        Auth Accepted URL should point to: /api/v1/ebay/oauth/callback
+      </div>
+    </div>
+
+    <script>
+      function toggleDebug() {
+        var info = document.getElementById('debugInfo');
+        info.classList.toggle('show');
+      }
+    </script>
   </div>
 </body>
 </html>

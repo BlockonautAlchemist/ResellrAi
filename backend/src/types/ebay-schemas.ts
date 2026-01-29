@@ -258,7 +258,7 @@ export const EbayOfferPayloadSchema = z.object({
     paymentPolicyId: z.string(),
     returnPolicyId: z.string(),
   }),
-  merchantLocationKey: z.string().optional(),
+  merchantLocationKey: z.string(), // Required per EBAY_SOURCE_OF_TRUTH.md Section 7
 });
 export type EbayOfferPayload = z.infer<typeof EbayOfferPayloadSchema>;
 
@@ -344,6 +344,75 @@ export const EbayUserPoliciesSchema = z.object({
   fetched_at: z.string().datetime(),
 });
 export type EbayUserPolicies = z.infer<typeof EbayUserPoliciesSchema>;
+
+// =============================================================================
+// INVENTORY LOCATION SCHEMAS
+// =============================================================================
+
+/**
+ * Address for inventory location
+ * Per EBAY_SOURCE_OF_TRUTH.md Section 7:
+ * "You must supply an address (country, and either city+state or postal code)"
+ */
+export const EbayLocationAddressSchema = z.object({
+  addressLine1: z.string().max(128).optional(),
+  addressLine2: z.string().max(128).optional(),
+  city: z.string().max(128).optional(),
+  stateOrProvince: z.string().max(128).optional(),
+  postalCode: z.string().max(64).optional(),
+  country: z.string().length(2).default('US'), // ISO 3166-1 alpha-2
+});
+export type EbayLocationAddress = z.infer<typeof EbayLocationAddressSchema>;
+
+/**
+ * Payload for creating an inventory location
+ * PUT /sell/inventory/v1/location/{merchantLocationKey}
+ */
+export const EbayInventoryLocationPayloadSchema = z.object({
+  name: z.string().max(256).optional(),
+  location: z.object({
+    address: EbayLocationAddressSchema,
+  }),
+  locationTypes: z.array(z.enum(['WAREHOUSE', 'STORE', 'FULFILLMENT_CENTER'])).default(['WAREHOUSE']),
+  merchantLocationStatus: z.enum(['ENABLED', 'DISABLED']).default('ENABLED'),
+});
+export type EbayInventoryLocationPayload = z.infer<typeof EbayInventoryLocationPayloadSchema>;
+
+/**
+ * Single inventory location from eBay
+ */
+export const EbayInventoryLocationSchema = z.object({
+  merchantLocationKey: z.string(),
+  name: z.string().optional(),
+  location: z.object({
+    address: EbayLocationAddressSchema,
+  }).optional(),
+  locationTypes: z.array(z.string()).optional(),
+  merchantLocationStatus: z.string().optional(),
+});
+export type EbayInventoryLocation = z.infer<typeof EbayInventoryLocationSchema>;
+
+/**
+ * Response from eBay getInventoryLocations
+ */
+export const EbayInventoryLocationsResponseSchema = z.object({
+  locations: z.array(EbayInventoryLocationSchema).default([]),
+  total: z.number().int().min(0).default(0),
+});
+export type EbayInventoryLocationsResponse = z.infer<typeof EbayInventoryLocationsResponseSchema>;
+
+/**
+ * Request to create location via our API
+ */
+export const CreateLocationRequestSchema = z.object({
+  name: z.string().max(256).optional(),
+  addressLine1: z.string().max(128).optional(),
+  city: z.string().max(128).optional(),
+  stateOrProvince: z.string().max(128).optional(),
+  postalCode: z.string().max(64).optional(),
+  country: z.string().length(2).default('US'),
+});
+export type CreateLocationRequest = z.infer<typeof CreateLocationRequestSchema>;
 
 // =============================================================================
 // ERROR SCHEMAS
