@@ -609,3 +609,143 @@ npx tsx src/tests/ebay/run-all.ts
 ---
 
 *Update this log after every meaningful task. Include what changed, what broke, and what was fixed.*
+
+---
+
+## 2026-01-30 - eBay Integration: Comps UI + Enhanced Publish - COMPLETE
+
+### Phase Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 0 | Documentation | ✅ Complete |
+| Phase 1 | Backend Enhancements | ✅ Complete |
+| Phase 2 | Frontend - Comps UI | ✅ Complete |
+| Phase 3 | Frontend - Enhanced Publish UX | ✅ Complete |
+| Phase 4 | Category Selection | ✅ Complete |
+
+### Phase 0: Documentation - COMPLETE
+
+**Created Files:**
+- `architecture/ebay_integration.md` - Comps algorithm, publish workflow, error mapping
+- `architecture/api_contracts.md` - JSON request/response shapes for all endpoints
+- `task_plan.md` - Implementation checklist with acceptance criteria
+- `findings.md` - Constraints, edge cases, eBay API limitations
+
+**Key Decisions:**
+- All comps will display "Active listings (not sold prices)" disclaimer
+- 15-minute cache TTL for comps, 24-hour for categories
+- Step-by-step publish progress with error recovery actions
+
+### Phase 1: Backend Enhancements - COMPLETE
+
+#### 1.1 Taxonomy API
+- [x] Created `backend/src/services/ebay/taxonomy.ts` service
+- [x] Added `GET /api/v1/ebay/categories/suggest` endpoint
+- [x] 24-hour caching for category suggestions
+- [x] Exported from `backend/src/services/ebay/index.ts`
+
+#### 1.2 Comps Enhancement
+- [x] Added `shipping_cost` and `total_cost` to `EbayCompItem` schema
+- [x] Added `cache_age` to `EbayCompsResult` schema
+- [x] Updated comps service to parse shipping costs from eBay response
+
+#### 1.3 Publish Enhancement
+- [x] Added `EbayPublishStep` schema with step/name/status tracking
+- [x] Modified `publishListing()` to track progress through steps
+- [x] Added `steps` array to `EbayPublishResult` response
+- [x] Added `action` field to error responses for recovery guidance
+
+### Phase 2: Frontend - Comps UI - COMPLETE
+
+**Created:**
+- `frontend/screens/CompsScreen.tsx` - New screen with:
+  - "Active listings (not sold prices)" disclaimer banner
+  - Stats card: median (prominent), average, min, max
+  - Sample size and confidence indicator
+  - FlatList of top 10 comps with thumbnails
+  - "Use this price" button per item
+  - "Use Median Price" button
+  - Condition filter chips
+  - Refine search input
+
+- `frontend/lib/api.ts` updates:
+  - Added `EbayCompItem`, `CompsFilters`, `CategorySuggestion` types
+  - Enhanced `getEbayComps()` with filter support
+  - Added `suggestCategory()` function
+
+### Phase 3: Frontend - Enhanced Publish UX - COMPLETE
+
+**Created:**
+- `frontend/components/PublishProgress.tsx` - 3-step progress indicator:
+  - Visual indicators for pending/in_progress/complete/failed
+  - Shows SKU, Offer ID, Listing ID as steps complete
+  - Error display for failed steps
+
+**Modified:**
+- `frontend/screens/ExportScreen.tsx`:
+  - Integrated PublishProgress during publish
+  - Added pre-publish validation (category required)
+  - Enhanced success state with SKU and Listing ID display
+  - Error mapping with actionable guidance messages
+  - Warning display when category not selected
+
+### Phase 4: Category Selection - COMPLETE
+
+**Created:**
+- `frontend/components/CategoryPicker.tsx`:
+  - Shows current category with "Change" button
+  - Modal with search/browse for eBay categories
+  - Displays category path and relevance scores
+  - Auto-loads suggestions from item title/brand
+
+**Modified:**
+- `frontend/screens/ListingPreviewScreen.tsx`:
+  - Added CategoryPicker component
+  - Added "View Price Comparables" button
+  - Passes selected category to Export screen
+  - Navigation to CompsScreen with price callback
+
+- `frontend/App.tsx`:
+  - Added CompsScreen to navigation stack
+
+### Acceptance Criteria - ALL MET
+
+- [x] Comps UI shows "Active listings (not sold prices)" disclaimer
+- [x] Stats display: median, average, min, max, sample size, confidence
+- [x] Top 10 comps with thumbnail, title, price, condition
+- [x] Category auto-suggested from AI, user can override
+- [x] Publish shows step-by-step progress (1/3, 2/3, 3/3)
+- [x] Errors mapped to actionable user messages
+- [x] Success shows listing URL
+
+### Files Modified/Created
+
+**Backend:**
+| File | Change |
+|------|--------|
+| `backend/src/services/ebay/taxonomy.ts` | NEW - Category suggestion service |
+| `backend/src/services/ebay/index.ts` | Export taxonomy service |
+| `backend/src/services/ebay/comps.ts` | Add shipping_cost, total_cost, cache_age |
+| `backend/src/services/ebay/listing.ts` | Add step progress tracking |
+| `backend/src/routes/ebay.ts` | Add /categories/suggest endpoint |
+| `backend/src/types/ebay-schemas.ts` | Add EbayPublishStep, update EbayCompItem |
+
+**Frontend:**
+| File | Change |
+|------|--------|
+| `frontend/screens/CompsScreen.tsx` | NEW - Comps display screen |
+| `frontend/components/PublishProgress.tsx` | NEW - 3-step progress indicator |
+| `frontend/components/CategoryPicker.tsx` | NEW - Category selection |
+| `frontend/screens/ListingPreviewScreen.tsx` | Add comps button, category picker |
+| `frontend/screens/ExportScreen.tsx` | Enhanced publish UX with progress |
+| `frontend/lib/api.ts` | Add types and functions |
+| `frontend/App.tsx` | Add CompsScreen to navigation |
+
+**Documentation:**
+| File | Change |
+|------|--------|
+| `architecture/ebay_integration.md` | NEW - Workflow SOPs |
+| `architecture/api_contracts.md` | NEW - API contracts |
+| `task_plan.md` | NEW - Implementation checklist |
+| `findings.md` | NEW - Constraints & discoveries |

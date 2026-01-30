@@ -21,6 +21,7 @@ import {
   getEbayPolicyService,
   getEbayListingService,
   getEbayLocationService,
+  getEbayTaxonomyService,
   isEbayAvailable,
   createErrorResponse,
   EBAY_ERROR_CODES,
@@ -437,7 +438,10 @@ router.delete('/account', requireEbayConfig, async (req: Request, res: Response)
  * GET /api/v1/ebay/comps
  * Get pricing comparables for a search query
  *
+ * Requires connected eBay account (user access token used for Browse API).
+ *
  * Query params:
+ * - user_id: User ID (required, same as /api/v1/ebay/connection)
  * - keywords: Search keywords (required)
  * - category_id: eBay category ID (optional)
  * - condition: NEW, LIKE_NEW, VERY_GOOD, GOOD, ACCEPTABLE (optional)
@@ -449,9 +453,21 @@ router.delete('/account', requireEbayConfig, async (req: Request, res: Response)
  * - stats: { median, average, min, max, sample_size, confidence }
  * - limitations: Array of caveats about the data
  * - data: Array of comparable items
+ *
+ * Returns 401 { error: "ebay_not_connected", needs_reauth: true } if no token or refresh fails.
  */
 router.get('/comps', async (req: Request, res: Response) => {
   try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
     // Parse and validate query params
     const query = EbayCompsQuerySchema.parse({
       keywords: req.query.keywords,
@@ -462,9 +478,27 @@ router.get('/comps', async (req: Request, res: Response) => {
       marketplace_id: req.query.marketplace_id || 'EBAY_US',
     });
 
-    // Fetch comps
+    // Resolve user's access token (lookup, decrypt, refresh if expired)
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessTokenForComps(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account to view pricing comps',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
+    // Fetch comps with valid access token
     const compsService = getEbayCompsService();
-    const result = await compsService.getComps(query);
+    const result = await compsService.getComps(query, accessToken);
 
     // Validate response
     const validated = EbayCompsResultSchema.parse(result);
@@ -495,6 +529,57 @@ router.get('/comps', async (req: Request, res: Response) => {
       error: {
         code: 'COMPS_FETCH_FAILED',
         message: error instanceof Error ? error.message : 'Failed to fetch pricing comps',
+      },
+    });
+  }
+});
+
+// =============================================================================
+// CATEGORY SUGGESTION ROUTES
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/categories/suggest
+ * Get AI-powered category suggestions based on item attributes
+ *
+ * Query params:
+ * - query: Search query (item title, keywords, brand) - required
+ * - marketplace: eBay marketplace ID (default: EBAY_US)
+ *
+ * Response:
+ * - suggestions: Array of { categoryId, categoryName, categoryPath, relevance }
+ * - cached: boolean
+ * - cacheAge: number (seconds since cached, if cached)
+ */
+router.get('/categories/suggest', async (req: Request, res: Response) => {
+  try {
+    const query = req.query.query;
+
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      res.status(400).json({
+        error: {
+          code: 'QUERY_REQUIRED',
+          message: 'Query parameter is required',
+        },
+      });
+      return;
+    }
+
+    const marketplace = (req.query.marketplace as string) || 'EBAY_US';
+
+    const taxonomyService = getEbayTaxonomyService();
+    const result = await taxonomyService.getCategorySuggestions(query, marketplace);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('[eBay Routes] Category suggest error:', error);
+    res.status(500).json({
+      error: {
+        code: 'CATEGORY_SUGGEST_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get category suggestions',
       },
     });
   }

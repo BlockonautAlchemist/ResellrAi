@@ -136,6 +136,8 @@ export const EbayCompItemSchema = z.object({
     value: z.number(),
     currency: z.string().default('USD'),
   }),
+  shipping_cost: z.number().default(0),
+  total_cost: z.number(), // price + shipping
   condition: z.string(),
   item_url: z.string().url(),
   image_url: z.string().url().optional(),
@@ -177,6 +179,7 @@ export const EbayCompsResultSchema = z.object({
     executed_at: z.string().datetime(),
   }),
   cached: z.boolean(),
+  cache_age: z.number().optional(), // seconds since cached
   cache_expires_at: z.string().datetime().optional(),
 });
 export type EbayCompsResult = z.infer<typeof EbayCompsResultSchema>;
@@ -263,6 +266,20 @@ export const EbayOfferPayloadSchema = z.object({
 export type EbayOfferPayload = z.infer<typeof EbayOfferPayloadSchema>;
 
 /**
+ * Single publish step status
+ */
+export const EbayPublishStepSchema = z.object({
+  step: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  name: z.enum(['inventory', 'offer', 'publish']),
+  status: z.enum(['pending', 'in_progress', 'complete', 'failed']),
+  item_sku: z.string().optional(),
+  offer_id: z.string().optional(),
+  listing_id: z.string().optional(),
+  error: z.string().optional(),
+});
+export type EbayPublishStep = z.infer<typeof EbayPublishStepSchema>;
+
+/**
  * Result of publishing a listing
  */
 export const EbayPublishResultSchema = z.object({
@@ -271,10 +288,12 @@ export const EbayPublishResultSchema = z.object({
   offer_id: z.string().optional(),
   sku: z.string().optional(),
   listing_url: z.string().url().optional(),
+  steps: z.array(EbayPublishStepSchema).optional(),
   error: z
     .object({
       code: z.string(),
       message: z.string(),
+      action: z.string().optional(), // Suggested recovery action
       details: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),

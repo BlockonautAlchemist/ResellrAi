@@ -302,6 +302,71 @@ export class EbayAuthService {
   }
 
   /**
+   * Get valid access token for comps (and other Browse API) calls.
+   * Uses ORDER BY created_at DESC LIMIT 1 for deterministic account selection.
+   * Logs safe diagnostics (no token values). Throws on missing/expired account.
+   * INTERNAL USE ONLY - never expose tokens to client.
+   */
+  async getAccessTokenForComps(userId: string): Promise<string> {
+    console.log('[eBay Comps] Resolving token', { user_id: userId });
+
+    const { data: accounts, error } = await this.supabase
+      .from('ebay_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const accountFound = !error && Array.isArray(accounts) && accounts.length > 0;
+    console.log('[eBay Comps] Token resolution', { user_id: userId, accountFound });
+
+    if (!accountFound || !accounts?.length) {
+      throw new Error('ebay_not_connected');
+    }
+
+    const storedAccount = accounts[0] as StoredEbayAccount;
+    let accessToken: string;
+    try {
+      accessToken = decryptToken(storedAccount.access_token_encrypted);
+    } catch {
+      console.log('[eBay Comps] Token resolution', {
+        user_id: userId,
+        accessTokenPresent: false,
+      });
+      throw new Error('ebay_not_connected');
+    }
+
+    const accessTokenExpired = tokenNeedsRefresh(storedAccount.access_token_expires_at);
+    console.log('[eBay Comps] Token resolution', {
+      user_id: userId,
+      accessTokenPresent: true,
+      accessTokenExpired,
+    });
+
+    if (!accessTokenExpired) {
+      return accessToken;
+    }
+
+    console.log('[eBay Comps] Token resolution', {
+      user_id: userId,
+      refreshAttempted: true,
+    });
+    let refreshSucceeded = false;
+    try {
+      accessToken = await this.refreshToken(storedAccount);
+      refreshSucceeded = true;
+    } finally {
+      console.log('[eBay Comps] Token resolution', {
+        user_id: userId,
+        refreshAttempted: true,
+        refreshSucceeded,
+      });
+    }
+    return accessToken;
+  }
+
+  /**
    * Refresh access token
    * INTERNAL USE ONLY
    */

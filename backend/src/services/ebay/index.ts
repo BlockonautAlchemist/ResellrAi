@@ -19,6 +19,15 @@ export { EbayLocationService, getEbayLocationService } from './location.js';
 // Listing service
 export { EbayListingService, getEbayListingService } from './listing.js';
 
+// Taxonomy service
+export {
+  EbayTaxonomyService,
+  getEbayTaxonomyService,
+  CATEGORY_TREE_IDS,
+  type CategorySuggestion,
+  type CategorySuggestionsResult,
+} from './taxonomy.js';
+
 // API client
 export { EbayApiClient, getEbayClient, isEbayAvailable, type EbayTokenResponse } from './client.js';
 

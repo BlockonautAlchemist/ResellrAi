@@ -19,6 +19,7 @@ import {
   type EbayInventoryItemPayload,
   type EbayOfferPayload,
   type EbayPublishResult,
+  type EbayPublishStep,
   type EbayListingDraft,
 } from '../../types/ebay-schemas.js';
 
@@ -90,7 +91,7 @@ export class EbayListingService {
    * 3. Create/update inventory item
    * 4. Create offer
    * 5. Publish offer
-   * 6. Return listing URL
+   * 6. Return listing URL with step-by-step progress
    */
   async publishListing(
     userId: string,
@@ -104,72 +105,116 @@ export class EbayListingService {
     const attemptedAt = new Date().toISOString();
     const warnings: Array<{ code: string; message: string }> = [];
 
+    // Initialize steps tracking
+    const steps: EbayPublishStep[] = [
+      { step: 1, name: 'inventory', status: 'pending' },
+      { step: 2, name: 'offer', status: 'pending' },
+      { step: 3, name: 'publish', status: 'pending' },
+    ];
+
     try {
       console.log(`[eBay Listing] Starting publish for listing ${draft.listing_id}...`);
 
-      // Step 1: Validate eBay connection
+      // Pre-validation: eBay connection
       const account = await this.authService.getConnectedAccount(userId);
       if (!account.connected) {
-        return this.errorResult('EBAY_NOT_CONNECTED', 'Please connect your eBay account first', attemptedAt);
+        return this.errorResultWithSteps(
+          'EBAY_NOT_CONNECTED',
+          'Please connect your eBay account first',
+          'reauth',
+          attemptedAt,
+          steps
+        );
       }
 
       if (account.needs_reauth) {
-        return this.errorResult('EBAY_REAUTH_REQUIRED', 'Please reconnect your eBay account', attemptedAt);
+        return this.errorResultWithSteps(
+          'EBAY_REAUTH_REQUIRED',
+          'Please reconnect your eBay account',
+          'reauth',
+          attemptedAt,
+          steps
+        );
       }
 
-      // Step 2: Get access token
+      // Pre-validation: Get access token
       const accessToken = await this.authService.getAccessToken(userId);
 
-      // Step 3: Ensure inventory location exists (REQUIRED per EBAY_SOURCE_OF_TRUTH.md Section 7)
+      // Pre-validation: Ensure inventory location exists (REQUIRED per EBAY_SOURCE_OF_TRUTH.md Section 7)
       const locationResult = await this.locationService.ensureLocationExists(userId);
       if (!locationResult.success || !locationResult.locationKey) {
-        return this.errorResult(
+        return this.errorResultWithSteps(
           'LOCATION_REQUIRED',
           locationResult.error || 'Please set up a shipping location before listing',
-          attemptedAt
+          'create_location',
+          attemptedAt,
+          steps
         );
       }
       const locationKey = locationResult.locationKey;
       console.log(`[eBay Listing] Using location: ${locationKey}`);
 
-      // Step 4: Generate SKU
+      // Generate SKU
       const sku = generateEbaySku(draft.listing_id);
       console.log(`[eBay Listing] Generated SKU: ${sku}`);
 
-      // Step 5: Create/update inventory item
+      // ===== STEP 1: Create/update inventory item =====
+      steps[0].status = 'in_progress';
       const inventoryResult = await this.createInventoryItem(accessToken, sku, draft);
       if (!inventoryResult.success) {
-        return this.errorResult(
+        steps[0].status = 'failed';
+        steps[0].error = inventoryResult.error;
+        return this.errorResultWithSteps(
           'INVENTORY_ITEM_FAILED',
           inventoryResult.error || 'Failed to create inventory item',
-          attemptedAt
+          'retry',
+          attemptedAt,
+          steps,
+          { sku }
         );
       }
+      steps[0].status = 'complete';
+      steps[0].item_sku = sku;
 
-      // Step 6: Create offer (with required merchantLocationKey)
+      // ===== STEP 2: Create offer =====
+      steps[1].status = 'in_progress';
       const offerResult = await this.createOffer(accessToken, sku, draft, policies, locationKey);
       if (!offerResult.success || !offerResult.offerId) {
-        return this.errorResult(
+        steps[1].status = 'failed';
+        steps[1].error = offerResult.error;
+        return this.errorResultWithSteps(
           'OFFER_CREATE_FAILED',
           offerResult.error || 'Failed to create offer',
-          attemptedAt
+          'check_details',
+          attemptedAt,
+          steps,
+          { sku }
         );
       }
+      steps[1].status = 'complete';
+      steps[1].offer_id = offerResult.offerId;
 
       if (offerResult.warnings) {
         warnings.push(...offerResult.warnings);
       }
 
-      // Step 7: Publish offer
+      // ===== STEP 3: Publish offer =====
+      steps[2].status = 'in_progress';
       const publishResult = await this.publishOffer(accessToken, offerResult.offerId);
       if (!publishResult.success || !publishResult.listingId) {
-        return this.errorResult(
+        steps[2].status = 'failed';
+        steps[2].error = publishResult.error;
+        return this.errorResultWithSteps(
           'OFFER_PUBLISH_FAILED',
           publishResult.error || 'Failed to publish offer',
+          'retry',
           attemptedAt,
+          steps,
           { offerId: offerResult.offerId, sku }
         );
       }
+      steps[2].status = 'complete';
+      steps[2].listing_id = publishResult.listingId;
 
       if (publishResult.warnings) {
         warnings.push(...publishResult.warnings);
@@ -185,16 +230,19 @@ export class EbayListingService {
         offer_id: offerResult.offerId,
         sku,
         listing_url: listingUrl,
+        steps,
         warnings: warnings.length > 0 ? warnings : undefined,
         published_at: new Date().toISOString(),
         attempted_at: attemptedAt,
       };
     } catch (error) {
       console.error('[eBay Listing] Publish error:', error);
-      return this.errorResult(
+      return this.errorResultWithSteps(
         'PUBLISH_ERROR',
         error instanceof Error ? error.message : 'Unknown error occurred',
-        attemptedAt
+        'retry',
+        attemptedAt,
+        steps
       );
     }
   }
@@ -396,7 +444,7 @@ export class EbayListingService {
   }
 
   /**
-   * Build error result
+   * Build error result (legacy, for backward compatibility)
    */
   private errorResult(
     code: string,
@@ -411,6 +459,31 @@ export class EbayListingService {
       error: {
         code,
         message,
+      },
+      attempted_at: attemptedAt,
+    };
+  }
+
+  /**
+   * Build error result with step progress
+   */
+  private errorResultWithSteps(
+    code: string,
+    message: string,
+    action: string,
+    attemptedAt: string,
+    steps: EbayPublishStep[],
+    partial?: { offerId?: string; sku?: string }
+  ): EbayPublishResult {
+    return {
+      success: false,
+      offer_id: partial?.offerId,
+      sku: partial?.sku,
+      steps,
+      error: {
+        code,
+        message,
+        action, // Suggested recovery action
       },
       attempted_at: attemptedAt,
     };

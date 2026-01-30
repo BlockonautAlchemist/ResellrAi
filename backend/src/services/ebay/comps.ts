@@ -37,6 +37,7 @@ import {
 
 interface CacheEntry {
   result: EbayCompsResult;
+  cachedAt: number;
   expiresAt: number;
 }
 
@@ -52,6 +53,7 @@ function getCacheKey(query: EbayCompsQuery): string {
     query.condition || '',
     query.brand || '',
     query.marketplace_id,
+    String(query.limit ?? 20),
   ];
   return parts.join('|');
 }
@@ -64,7 +66,8 @@ function getCachedResult(query: EbayCompsQuery): EbayCompsResult | null {
   const entry = compsCache.get(key);
 
   if (entry && entry.expiresAt > Date.now()) {
-    return { ...entry.result, cached: true };
+    const cacheAge = Math.floor((Date.now() - entry.cachedAt) / 1000);
+    return { ...entry.result, cached: true, cache_age: cacheAge };
   }
 
   if (entry) {
@@ -79,10 +82,12 @@ function getCachedResult(query: EbayCompsQuery): EbayCompsResult | null {
  */
 function cacheResult(query: EbayCompsQuery, result: EbayCompsResult): void {
   const key = getCacheKey(query);
-  const expiresAt = Date.now() + COMPS_CACHE_TTL_MS;
+  const now = Date.now();
+  const expiresAt = now + COMPS_CACHE_TTL_MS;
 
   compsCache.set(key, {
     result: { ...result, cache_expires_at: new Date(expiresAt).toISOString() },
+    cachedAt: now,
     expiresAt,
   });
 
@@ -130,6 +135,13 @@ interface EbayItemSummary {
   };
   itemEndDate?: string;
   buyingOptions?: string[];
+  shippingOptions?: Array<{
+    shippingCostType?: string;
+    shippingCost?: {
+      value: string;
+      currency: string;
+    };
+  }>;
 }
 
 // =============================================================================
@@ -144,15 +156,16 @@ export class EbayCompsService {
   }
 
   /**
-   * Get pricing comparables for a query
+   * Get pricing comparables for a query.
+   * Requires a valid eBay access token (resolved by the caller; comps does not fetch tokens).
    */
-  async getComps(query: EbayCompsQuery): Promise<EbayCompsResult> {
+  async getComps(query: EbayCompsQuery, accessToken: string): Promise<EbayCompsResult> {
     const startTime = Date.now();
 
     // Validate input
     const validatedQuery = EbayCompsQuerySchema.parse(query);
 
-    // Check cache first
+    // Check cache first (cache is independent of user/auth)
     const cached = getCachedResult(validatedQuery);
     if (cached) {
       console.log(
@@ -167,8 +180,8 @@ export class EbayCompsService {
     let result = await this.fetchSoldComps(validatedQuery);
 
     if (result.source === 'none' || result.stats.sample_size < 3) {
-      // Not enough sold data, try active listings
-      const activeResult = await this.fetchActiveComps(validatedQuery);
+      // Not enough sold data, try active listings (requires access token)
+      const activeResult = await this.fetchActiveComps(validatedQuery, accessToken);
 
       if (activeResult.stats.sample_size > result.stats.sample_size) {
         result = activeResult;
@@ -206,9 +219,13 @@ export class EbayCompsService {
   }
 
   /**
-   * Fetch active listings
+   * Fetch active listings.
+   * Browse API requires a valid user access token (Bearer); no unauthenticated access.
    */
-  private async fetchActiveComps(query: EbayCompsQuery): Promise<EbayCompsResult> {
+  private async fetchActiveComps(
+    query: EbayCompsQuery,
+    accessToken: string
+  ): Promise<EbayCompsResult> {
     try {
       // Build search URL
       const searchParams = new URLSearchParams();
@@ -232,10 +249,11 @@ export class EbayCompsService {
 
       const path = `/buy/browse/v1/item_summary/search?${searchParams.toString()}`;
 
-      // Make API request (Browse API allows unauthenticated requests with app token)
+      // Make API request with user's access token (required by Browse API)
       const response = await this.ebayClient.request<EbaySearchResponse>({
         method: 'GET',
         path,
+        accessToken,
         headers: {
           'X-EBAY-C-MARKETPLACE-ID': query.marketplace_id,
         },
@@ -295,23 +313,39 @@ export class EbayCompsService {
   private parseItems(items: EbayItemSummary[]): EbayCompItem[] {
     return items
       .filter((item) => item.price?.value) // Must have price
-      .map((item) => ({
-        item_id: item.itemId,
-        title: item.title,
-        price: {
-          value: parseFloat(item.price!.value),
-          currency: item.price!.currency || 'USD',
-        },
-        condition: item.condition || 'Unknown',
-        item_url: item.itemWebUrl || `https://www.ebay.com/itm/${item.itemId}`,
-        image_url: item.image?.imageUrl,
-        seller: item.seller
-          ? {
-              username: item.seller.username,
-              feedback_score: item.seller.feedbackScore,
-            }
-          : undefined,
-      }));
+      .map((item) => {
+        const price = parseFloat(item.price!.value);
+
+        // Extract shipping cost (0 if free shipping or not specified)
+        let shippingCost = 0;
+        if (item.shippingOptions && item.shippingOptions.length > 0) {
+          const firstOption = item.shippingOptions[0];
+          if (firstOption.shippingCost?.value) {
+            shippingCost = parseFloat(firstOption.shippingCost.value);
+          }
+          // If shippingCostType is 'FREE', shipping is 0
+        }
+
+        return {
+          item_id: item.itemId,
+          title: item.title,
+          price: {
+            value: price,
+            currency: item.price!.currency || 'USD',
+          },
+          shipping_cost: shippingCost,
+          total_cost: price + shippingCost,
+          condition: item.condition || 'Unknown',
+          item_url: item.itemWebUrl || `https://www.ebay.com/itm/${item.itemId}`,
+          image_url: item.image?.imageUrl,
+          seller: item.seller
+            ? {
+                username: item.seller.username,
+                feedback_score: item.seller.feedbackScore,
+              }
+            : undefined,
+        };
+      });
   }
 
   /**
