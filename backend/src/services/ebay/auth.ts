@@ -233,16 +233,27 @@ export class EbayAuthService {
    * Get connected account status (safe for client)
    */
   async getConnectedAccount(userId: string): Promise<EbayConnectedAccount> {
-    const { data: account, error } = await this.supabase
-      .from('ebay_accounts')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .single();
+    try {
+      // Get the most recently connected active account (handles duplicates from fallback ebay_user_id)
+      const { data: accounts, error } = await this.supabase
+        .from('ebay_accounts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('connected_at', { ascending: false })
+        .limit(1);
 
-    if (error || !account) {
-      return { connected: false };
-    }
+      const account = accounts?.[0] || null;
+
+      if (error) {
+        console.warn('[eBay Auth] getConnectedAccount query error:', error.code, error.message);
+        return { connected: false };
+      }
+
+      if (!account) {
+        // No account found - this is expected when not connected
+        return { connected: false };
+      }
 
     const storedAccount = account as StoredEbayAccount;
 
@@ -256,6 +267,11 @@ export class EbayAuthService {
       needs_reauth: needsReauth,
       marketplace: 'EBAY_US',
     };
+    } catch (err) {
+      // Catch any unexpected errors (network issues, etc.)
+      console.error('[eBay Auth] getConnectedAccount unexpected error:', err);
+      return { connected: false };
+    }
   }
 
   /**

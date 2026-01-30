@@ -75,6 +75,57 @@ function getUserId(req: Request): string | null {
 // =============================================================================
 
 /**
+ * GET /api/v1/ebay/connection
+ * Get per-user eBay connection status
+ *
+ * Query params:
+ * - user_id: User ID (required, temporary - will come from auth)
+ *
+ * Returns:
+ * - 200 { connected: false } if no connected account
+ * - 200 { connected: true, environment, ebay_username, scopes, last_connected_at } if connected
+ * - Never returns 500 for "not connected" - that's a normal state
+ */
+router.get('/connection', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      // Without a user ID, we can't check connection - return not connected
+      res.json({ connected: false });
+      return;
+    }
+
+    // Check if eBay integration is even configured
+    if (!isEbayAvailable()) {
+      res.json({ connected: false, reason: 'ebay_not_configured' });
+      return;
+    }
+
+    const authService = getEbayAuthService();
+    const account = await authService.getConnectedAccount(userId);
+
+    if (!account.connected) {
+      res.json({ connected: false });
+      return;
+    }
+
+    // Return connection details
+    res.json({
+      connected: true,
+      environment: env.EBAY_ENVIRONMENT,
+      ebay_username: account.ebay_username || null,
+      scopes: ['sell', 'read'], // Simplified scope representation
+      last_connected_at: account.connected_at,
+      needs_reauth: account.needs_reauth || false,
+    });
+  } catch (error) {
+    // Log but don't fail - "not connected" is a valid state
+    console.warn('[eBay Routes] Connection check error:', error);
+    res.json({ connected: false });
+  }
+});
+
+/**
  * GET /api/v1/ebay/status
  * Check if eBay integration is available and configured
  */
@@ -200,6 +251,9 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     error: req.query.error,
   });
 
+  // Check for auto-redirect query param (defaults to true)
+  const autoRedirect = req.query.redirect !== 'false';
+
   try {
     const { code, state, error, error_description } = req.query;
 
@@ -207,8 +261,19 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     if (error) {
       console.log(`[eBay Routes] OAuth denied: ${error} - ${error_description}`);
 
-      // Redirect to mobile app with error
-      const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?error=${encodeURIComponent(String(error))}&message=${encodeURIComponent(String(error_description || 'Access denied'))}`;
+      // Generate deep link for mobile app
+      const deepLink = buildOAuthDeepLink({
+        success: false,
+        error: String(error),
+        message: String(error_description || 'Access denied'),
+      });
+
+      // Try automatic redirect first, fall back to HTML page
+      if (autoRedirect && deepLink) {
+        console.log(`[eBay Routes] Redirecting to: ${deepLink}`);
+        res.redirect(302, deepLink);
+        return;
+      }
 
       res.send(generateCallbackPage(
         false,
@@ -240,7 +305,14 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     console.log(`[eBay Routes] OAuth success for user ${result.userId}`);
 
     // Generate success deep link
-    const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?success=true`;
+    const deepLink = buildOAuthDeepLink({ success: true });
+
+    // Try automatic redirect first (302), fall back to HTML page
+    if (autoRedirect && deepLink) {
+      console.log(`[eBay Routes] Redirecting to: ${deepLink}`);
+      res.redirect(302, deepLink);
+      return;
+    }
 
     res.send(generateCallbackPage(
       true,
@@ -252,7 +324,18 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     console.error('[eBay Routes] OAuth callback error:', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Connection failed';
-    const deepLink = `${env.MOBILE_DEEP_LINK_SCHEME}://ebay-callback?error=callback_failed&message=${encodeURIComponent(errorMessage)}`;
+    const deepLink = buildOAuthDeepLink({
+      success: false,
+      error: 'callback_failed',
+      message: errorMessage,
+    });
+
+    // Try automatic redirect for errors too
+    if (autoRedirect && deepLink) {
+      console.log(`[eBay Routes] Redirecting to: ${deepLink}`);
+      res.redirect(302, deepLink);
+      return;
+    }
 
     res.send(generateCallbackPage(
       false,
@@ -811,6 +894,43 @@ router.get('/listings/:id/status', requireEbayConfig, async (req: Request, res: 
 // =============================================================================
 // HELPERS
 // =============================================================================
+
+/**
+ * Build OAuth deep link URL for mobile app
+ *
+ * Supports two modes:
+ * 1. Expo Go development: Uses exp://host:port/--/oauth/success format
+ *    (requires EXPO_DEV_URL env var, e.g., exp://192.168.1.50:8081)
+ * 2. Production/custom builds: Uses resellrai://ebay-callback format
+ *
+ * The /--/ path segment is required for Expo Go to route deep links correctly.
+ */
+function buildOAuthDeepLink(params: {
+  success: boolean;
+  error?: string;
+  message?: string;
+}): string {
+  const queryParams = new URLSearchParams();
+
+  if (params.success) {
+    queryParams.set('success', 'true');
+  } else {
+    if (params.error) queryParams.set('error', params.error);
+    if (params.message) queryParams.set('message', params.message);
+  }
+  queryParams.set('provider', 'ebay');
+
+  // Use Expo Go compatible URL if EXPO_DEV_URL is set
+  if (env.EXPO_DEV_URL) {
+    // Format: exp://192.168.1.50:8081/--/oauth/success?provider=ebay&success=true
+    // The /--/ is required for Expo Go to recognize deep link paths
+    const expoBase = env.EXPO_DEV_URL.replace(/\/$/, ''); // Remove trailing slash
+    return `${expoBase}/--/oauth/success?${queryParams.toString()}`;
+  }
+
+  // Fallback to custom scheme (works in production builds)
+  return `${env.MOBILE_DEEP_LINK_SCHEME}://oauth/success?${queryParams.toString()}`;
+}
 
 /**
  * Generate HTML page for OAuth callback

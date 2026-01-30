@@ -26,6 +26,9 @@ const envSchema = z.object({
   // App URLs (for OAuth callbacks)
   APP_BASE_URL: z.string().url().default('http://localhost:3000'),
   MOBILE_DEEP_LINK_SCHEME: z.string().default('resellrai'),
+  // Expo Go dev URL for OAuth redirects (e.g., exp://192.168.1.50:8081)
+  // When set, uses Expo Go compatible deep links instead of custom scheme
+  EXPO_DEV_URL: z.string().optional(),
 
   // Server
   PORT: z.string().default('3000').transform(Number),
