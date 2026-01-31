@@ -542,24 +542,44 @@ router.get('/comps', async (req: Request, res: Response) => {
  * GET /api/v1/ebay/categories/suggest
  * Get AI-powered category suggestions based on item attributes
  *
+ * Requires connected eBay account (user access token used for Taxonomy API).
+ *
  * Query params:
- * - query: Search query (item title, keywords, brand) - required
+ * - user_id: User ID (required)
+ * - query, q, or keywords: Search query (item title, keywords, brand) - required
  * - marketplace: eBay marketplace ID (default: EBAY_US)
  *
  * Response:
  * - suggestions: Array of { categoryId, categoryName, categoryPath, relevance }
  * - cached: boolean
  * - cacheAge: number (seconds since cached, if cached)
+ *
+ * Returns 401 { error: "ebay_not_connected", needs_reauth: true } if no token or refresh fails.
+ *
+ * Example curl:
+ *   curl "https://<host>/api/v1/ebay/categories/suggest?query=harley%20davidson%20shirt" \
+ *     -H "x-user-id: <user-id>"
  */
 router.get('/categories/suggest', async (req: Request, res: Response) => {
   try {
-    const query = req.query.query;
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
 
-    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+    // Accept query, q, or keywords (eBay-style API compatibility)
+    const query = (req.query.query ?? req.query.q ?? req.query.keywords) as string | undefined;
+
+    if (!query || query.trim().length === 0) {
       res.status(400).json({
         error: {
           code: 'QUERY_REQUIRED',
-          message: 'Query parameter is required',
+          message: 'Provide ?query= or ?q= with a search term',
         },
       });
       return;
@@ -567,8 +587,26 @@ router.get('/categories/suggest', async (req: Request, res: Response) => {
 
     const marketplace = (req.query.marketplace as string) || 'EBAY_US';
 
+    // Resolve user's access token (lookup, decrypt, refresh if expired)
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessToken(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account to get category suggestions',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
     const taxonomyService = getEbayTaxonomyService();
-    const result = await taxonomyService.getCategorySuggestions(query, marketplace);
+    const result = await taxonomyService.getCategorySuggestions(query, marketplace, accessToken);
 
     res.json({
       success: true,

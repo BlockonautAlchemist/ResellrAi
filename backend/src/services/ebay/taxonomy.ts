@@ -158,11 +158,13 @@ export class EbayTaxonomyService {
    *
    * @param query - Search query (item title, keywords, brand)
    * @param marketplace - eBay marketplace ID (default: EBAY_US)
+   * @param accessToken - Valid eBay user access token (required for Taxonomy API)
    * @returns Array of suggested categories with relevance
    */
   async getCategorySuggestions(
     query: string,
-    marketplace: string = 'EBAY_US'
+    marketplace: string = 'EBAY_US',
+    accessToken: string
   ): Promise<CategorySuggestionsResult> {
     const startTime = Date.now();
 
@@ -199,10 +201,11 @@ export class EbayTaxonomyService {
 
       const path = `/commerce/taxonomy/v1/category_tree/${treeId}/get_category_suggestions?${searchParams.toString()}`;
 
-      // Make API request (Taxonomy API allows unauthenticated requests)
+      // Make authenticated API request (Taxonomy API requires Bearer token)
       const response = await this.ebayClient.request<EbayCategorySuggestionResponse>({
         method: 'GET',
         path,
+        accessToken,
         headers: {
           'Accept-Language': 'en-US',
         },
