@@ -13,6 +13,14 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increased for base64 photos
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Disable ngrok browser warning in development
+if (env.NODE_ENV !== 'production') {
+  app.use((_req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
+  });
+}
+
 // Routes
 app.use('/health', healthRouter);
 app.use('/api/v1/listings', listingsRouter);

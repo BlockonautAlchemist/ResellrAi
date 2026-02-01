@@ -13,6 +13,19 @@
 import { z } from 'zod';
 
 // =============================================================================
+// DATETIME HELPERS
+// =============================================================================
+
+/**
+ * Loose datetime validator that accepts ISO datetime strings with timezone offsets.
+ * Converts "+00:00" suffix to "Z" before parsing, since Zod's datetime() only accepts "Z".
+ */
+const DateTimeLoose = z.preprocess(
+  (v) => (typeof v === 'string' ? v.replace(/\+00:00$/, 'Z') : v),
+  z.string().datetime()
+);
+
+// =============================================================================
 // ENUMS
 // =============================================================================
 
@@ -103,7 +116,7 @@ export type EbayTokenSet = z.infer<typeof EbayTokenSetSchema>;
 export const EbayConnectedAccountSchema = z.object({
   connected: z.boolean(),
   ebay_username: z.string().optional(),
-  connected_at: z.string().datetime().optional(),
+  connected_at: DateTimeLoose.optional(),
   needs_reauth: z.boolean().optional(),
   marketplace: EbayMarketplaceEnum.optional(),
 });

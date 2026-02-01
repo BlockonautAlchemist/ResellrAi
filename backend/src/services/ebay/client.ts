@@ -176,10 +176,7 @@ export class EbayApiClient {
   async request<T>(options: EbayRequestOptions): Promise<EbayApiResponse<T>> {
     const { method, path, body, headers = {}, accessToken, timeout = 30000 } = options;
 
-    // Determine base URL (token endpoint is different)
-    const isTokenEndpoint = path.includes('/oauth2/token');
-    const baseUrl = isTokenEndpoint ? this.urls.api : this.urls.api;
-    const url = `${baseUrl}${path}`;
+    const url = `${this.urls.api}${path}`;
 
     // Build headers
     const requestHeaders: Record<string, string> = {
@@ -251,6 +248,19 @@ export class EbayApiClient {
             data = json as T;
           } else {
             error = this.parseEbayError(json, response.status);
+          }
+        } else {
+          // Non-JSON response
+          if (!response.ok) {
+            const text = await response.text();
+            error = {
+              error: {
+                code: `HTTP_${response.status}`,
+                message: text.slice(0, 500),
+              },
+              request_id: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+            };
           }
         }
 
