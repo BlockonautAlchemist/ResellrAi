@@ -327,6 +327,20 @@ export class EbayListingService {
     error?: string;
   }> {
     try {
+      // Log the merchantLocationKey being used
+      console.log(`[eBay Publish] merchantLocationKey=${locationKey}`);
+
+      // Assert merchantLocationKey is present
+      if (!locationKey) {
+        return {
+          success: false,
+          error: JSON.stringify({
+            code: 'EBAY_MERCHANT_LOCATION_KEY_MISSING',
+            message: 'merchantLocationKey is required but was not provided',
+          }),
+        };
+      }
+
       const payload: EbayOfferPayload = {
         sku,
         marketplaceId: 'EBAY_US',
@@ -371,9 +385,25 @@ export class EbayListingService {
         };
       }
 
+      // Log full eBay error response
+      const rawError = response.error ? JSON.stringify(response.error) : 'no error body';
+      console.error('[eBay Publish] createOffer failed:', {
+        status: response.statusCode,
+        rawError,
+        merchantLocationKey: locationKey,
+      });
+
+      // Check for shipping location error and provide user-friendly message
+      const errorMessage = response.error?.error.message || 'Failed to create offer';
+      let userMessage = errorMessage;
+      if (errorMessage.toLowerCase().includes('shipping location required')) {
+        userMessage = 'eBay requires an inventory location (warehouse). Your Ship From address is not sufficient - please verify your inventory location is set up correctly in eBay Seller Hub under "Manage Inventory Locations".';
+        console.error('[eBay Publish] Shipping location error - raw eBay response:', rawError);
+      }
+
       return {
         success: false,
-        error: response.error?.error.message || 'Failed to create offer',
+        error: userMessage,
       };
     } catch (error) {
       return {
@@ -416,9 +446,25 @@ export class EbayListingService {
         };
       }
 
+      // Log full eBay error response
+      const rawError = response.error ? JSON.stringify(response.error) : 'no error body';
+      console.error('[eBay Publish] publishOffer failed:', {
+        status: response.statusCode,
+        rawError,
+        offerId,
+      });
+
+      // Check for shipping location error
+      const errorMessage = response.error?.error.message || 'Failed to publish offer';
+      let userMessage = errorMessage;
+      if (errorMessage.toLowerCase().includes('shipping location required')) {
+        userMessage = 'eBay requires an inventory location (warehouse). Please verify your inventory location exists and is ENABLED in eBay Seller Hub.';
+        console.error('[eBay Publish] Shipping location error at publish - raw eBay response:', rawError);
+      }
+
       return {
         success: false,
-        error: response.error?.error.message || 'Failed to publish offer',
+        error: userMessage,
       };
     } catch (error) {
       return {

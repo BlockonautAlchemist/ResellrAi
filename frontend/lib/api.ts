@@ -374,9 +374,9 @@ export interface SellerLocationProfile {
 
 export interface SaveSellerLocationRequest {
   country?: string;
-  postal_code?: string;
-  city?: string;
-  state_or_province?: string;
+  postal_code: string;       // Required for US
+  city: string;              // Required for US
+  state_or_province: string; // Required for US
   address_line1?: string;
 }
 

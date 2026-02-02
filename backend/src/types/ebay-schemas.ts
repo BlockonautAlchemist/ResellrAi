@@ -436,19 +436,32 @@ export type EbayInventoryLocationsResponse = z.infer<typeof EbayInventoryLocatio
 /**
  * Request to create location via our API
  */
-export const CreateLocationRequestSchema = z.object({
-  name: z.string().max(256).optional(),
-  addressLine1: z.string().max(128).optional(),
-  city: z.string().max(128).optional(),
-  stateOrProvince: z.string().max(128).optional(),
-  postalCode: z.string().max(64).optional(),
-  country: z.string().length(2).default('US'),
-});
+export const CreateLocationRequestSchema = z
+  .object({
+    name: z.string().max(256).optional(),
+    addressLine1: z.string().max(128).optional(),
+    city: z.string().max(128).optional(),
+    stateOrProvince: z.string().max(128).optional(),
+    postalCode: z.string().max(64).optional(),
+    country: z.string().length(2).default('US'),
+  })
+  .refine(
+    (data) => {
+      if (data.country === 'US') {
+        return !!data.postalCode && !!data.city && !!data.stateOrProvince;
+      }
+      return !!data.postalCode || (!!data.city && !!data.stateOrProvince);
+    },
+    {
+      message: 'US locations require city, state, AND postal code',
+    }
+  );
 export type CreateLocationRequest = z.infer<typeof CreateLocationRequestSchema>;
 
 /**
  * Request to save seller location profile
- * Requires postal_code OR (city AND state_or_province)
+ * For US: requires city, state, AND postal_code
+ * For non-US: requires postal_code OR (city AND state_or_province)
  */
 export const SaveSellerLocationRequestSchema = z
   .object({
@@ -460,12 +473,15 @@ export const SaveSellerLocationRequestSchema = z
   })
   .refine(
     (data) => {
-      const hasPostalCode = !!data.postal_code;
-      const hasCityAndState = !!data.city && !!data.state_or_province;
-      return hasPostalCode || hasCityAndState;
+      // For US, require all three: city, state, AND postal_code
+      if (data.country === 'US') {
+        return !!data.postal_code && !!data.city && !!data.state_or_province;
+      }
+      // Non-US: keep original logic
+      return !!data.postal_code || (!!data.city && !!data.state_or_province);
     },
     {
-      message: 'Either postal_code OR (city AND state_or_province) is required',
+      message: 'US locations require city, state, AND postal code',
     }
   );
 export type SaveSellerLocationRequest = z.infer<typeof SaveSellerLocationRequestSchema>;

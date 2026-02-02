@@ -57,6 +57,22 @@ interface EbayLocationsApiResponse {
   total?: number;
 }
 
+interface EbaySingleLocationApiResponse {
+  merchantLocationKey: string;
+  name?: string;
+  location?: {
+    address?: {
+      addressLine1?: string;
+      city?: string;
+      stateOrProvince?: string;
+      postalCode?: string;
+      country?: string;
+    };
+  };
+  locationTypes?: string[];
+  merchantLocationStatus?: string;
+}
+
 // =============================================================================
 // LOCATION SERVICE
 // =============================================================================
@@ -141,6 +157,61 @@ export class EbayLocationService {
   }
 
   /**
+   * Get a single inventory location by key
+   * Used to verify location exists and is ENABLED after creation
+   */
+  async getInventoryLocationByKey(
+    userId: string,
+    merchantLocationKey: string
+  ): Promise<{ success: boolean; location?: EbayInventoryLocation; status?: number; body?: string; error?: string }> {
+    try {
+      const accessToken = await this.authService.getAccessToken(userId);
+
+      const response = await this.ebayClient.authenticatedRequest<EbaySingleLocationApiResponse>(
+        accessToken,
+        {
+          method: 'GET',
+          path: `/sell/inventory/v1/location/${encodeURIComponent(merchantLocationKey)}`,
+        }
+      );
+
+      // Log response for debugging (no tokens)
+      const safeBody = response.data ? JSON.stringify(response.data) : (response.error ? JSON.stringify(response.error) : 'empty');
+      console.log(`[eBay Location] GET location status=${response.statusCode} body=${safeBody}`);
+
+      if (response.success && response.data) {
+        return {
+          success: true,
+          status: response.statusCode,
+          body: safeBody,
+          location: {
+            merchantLocationKey: response.data.merchantLocationKey,
+            name: response.data.name,
+            location: response.data.location?.address
+              ? { address: { ...response.data.location.address, country: response.data.location.address.country || 'US' } }
+              : undefined,
+            locationTypes: response.data.locationTypes,
+            merchantLocationStatus: response.data.merchantLocationStatus,
+          },
+        };
+      }
+
+      return {
+        success: false,
+        status: response.statusCode,
+        body: safeBody,
+        error: response.error?.error.message || `HTTP ${response.statusCode}`,
+      };
+    } catch (error) {
+      console.error('[eBay Location] Error fetching location by key:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
    * Get all inventory locations for a user
    */
   async getInventoryLocations(userId: string): Promise<LocationsListResult> {
@@ -213,38 +284,136 @@ export class EbayLocationService {
       // Generate location key if not provided
       const locationKey = merchantLocationKey || this.generateLocationKey();
 
-      // Build the payload per eBay Inventory API spec
+      // Build address with only defined fields (undefined/null causes eBay error 2004)
+      const address = {
+        country: locationData.country || 'US',
+        ...(locationData.addressLine1 && { addressLine1: locationData.addressLine1 }),
+        ...(locationData.city && { city: locationData.city }),
+        ...(locationData.stateOrProvince && { stateOrProvince: locationData.stateOrProvince }),
+        ...(locationData.postalCode && { postalCode: locationData.postalCode }),
+      };
+
       const payload: EbayInventoryLocationPayload = {
-        name: locationData.name || 'Default Shipping Location',
+        name: locationData.name || 'ResellrAI Default',
         location: {
-          address: {
-            addressLine1: locationData.addressLine1,
-            city: locationData.city,
-            stateOrProvince: locationData.stateOrProvince,
-            postalCode: locationData.postalCode,
-            country: locationData.country || 'US',
-          },
+          address: address as EbayInventoryLocationPayload['location']['address'],
         },
         locationTypes: ['WAREHOUSE'],
         merchantLocationStatus: 'ENABLED',
       };
 
-      console.log(`[eBay Location] Creating location: ${locationKey}`);
+      // Build the endpoint path
+      const endpointPath = `/sell/inventory/v1/location/${encodeURIComponent(locationKey)}`;
+      const fullUrl = `${this.ebayClient.getApiBaseUrl()}${endpointPath}`;
 
-      // PUT request creates or replaces the location
+      // Debug log: method, full URL, env, payload keys (no token)
+      console.log(`[eBay Location] Creating location:`, {
+        method: 'POST',
+        url: fullUrl,
+        env: process.env.EBAY_ENVIRONMENT || 'sandbox',
+        merchantLocationKey: locationKey,
+        payloadKeys: Object.keys(payload),
+        addressKeys: Object.keys(address),
+        address,
+      });
+
+      // POST request creates the location (eBay Inventory API requires POST, not PUT)
       const response = await this.ebayClient.authenticatedRequest<void>(
         accessToken,
         {
-          method: 'PUT',
-          path: `/sell/inventory/v1/location/${encodeURIComponent(locationKey)}`,
+          method: 'POST',
+          path: endpointPath,
           body: payload,
         }
       );
+
+      // Log POST response
+      const responseBody = response.error ? JSON.stringify(response.error) : 'empty';
+      console.log(`[eBay Location] POST location status=${response.statusCode} body=${responseBody}`);
+
+      // Better error handling for 2004 (Invalid request - usually incomplete address)
+      if (!response.success) {
+        const rawError = response.error ? JSON.stringify(response.error) : 'no error body';
+        console.error('[eBay Location] POST location failed:', {
+          method: 'POST',
+          url: fullUrl,
+          env: process.env.EBAY_ENVIRONMENT || 'sandbox',
+          status: response.statusCode,
+          rawError,
+          addressKeys: Object.keys(address),
+        });
+
+        // Check for error 2004 (Invalid request - usually incomplete address)
+        const errorId = response.error?.error?.ebay_error_id;
+        const errorMessage = response.error?.error?.message || '';
+
+        if (errorId === '2004' || errorMessage.includes('Invalid request')) {
+          const missingFields = [
+            !address.city && 'city',
+            !address.stateOrProvince && 'stateOrProvince',
+            !address.postalCode && 'postalCode',
+          ].filter(Boolean);
+
+          return {
+            success: false,
+            error: JSON.stringify({
+              code: 'EBAY_ADDRESS_INCOMPLETE',
+              message: 'Your shipping location is incomplete. eBay requires city, state, AND postal code for US locations.',
+              missing_fields: missingFields,
+              ebay_error_id: errorId,
+            }),
+          };
+        }
+
+        return {
+          success: false,
+          error: response.error?.error?.message || `HTTP ${response.statusCode}`,
+        };
+      }
 
       // 204 No Content = success (created/updated)
       // 200 = success with body
       if (response.statusCode === 204 || response.statusCode === 200) {
         console.log(`[eBay Location] Location created successfully: ${locationKey}`);
+
+        // VERIFICATION: GET the location to confirm it exists and is ENABLED
+        const verifyResult = await this.getInventoryLocationByKey(userId, locationKey);
+
+        if (!verifyResult.success || !verifyResult.location) {
+          console.error('[eBay Location] Location verification failed after PUT:', {
+            merchantLocationKey: locationKey,
+            getStatus: verifyResult.status,
+            getBody: verifyResult.body,
+          });
+          return {
+            success: false,
+            error: JSON.stringify({
+              code: 'EBAY_INVENTORY_LOCATION_INVALID',
+              message: 'Inventory location could not be verified after creation',
+              merchantLocationKey: locationKey,
+              verifyStatus: verifyResult.status,
+            }),
+          };
+        }
+
+        if (verifyResult.location.merchantLocationStatus !== 'ENABLED') {
+          console.error('[eBay Location] Location exists but is not ENABLED:', {
+            merchantLocationKey: locationKey,
+            status: verifyResult.location.merchantLocationStatus,
+          });
+          return {
+            success: false,
+            error: JSON.stringify({
+              code: 'EBAY_INVENTORY_LOCATION_INVALID',
+              message: `Inventory location is ${verifyResult.location.merchantLocationStatus}, not ENABLED. Cannot publish.`,
+              merchantLocationKey: locationKey,
+              locationStatus: verifyResult.location.merchantLocationStatus,
+            }),
+          };
+        }
+
+        console.log(`[eBay Location] Location verified ENABLED: ${locationKey}`);
+
         return {
           success: true,
           location: {
@@ -252,14 +421,15 @@ export class EbayLocationService {
             name: payload.name,
             location: payload.location,
             locationTypes: payload.locationTypes,
-            merchantLocationStatus: payload.merchantLocationStatus,
+            merchantLocationStatus: verifyResult.location.merchantLocationStatus,
           },
         };
       }
 
+      // This shouldn't be reached due to earlier error handling, but kept as fallback
       return {
         success: false,
-        error: response.error?.error.message || `HTTP ${response.statusCode}`,
+        error: 'Unexpected response from eBay API',
       };
     } catch (error) {
       console.error('[eBay Location] Error creating location:', error);

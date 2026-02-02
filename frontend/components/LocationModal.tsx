@@ -64,14 +64,16 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
   };
 
   const isValid = () => {
+    // For US, all three are required
     const hasPostalCode = postalCode.trim().length > 0;
-    const hasCityAndState = city.trim().length > 0 && stateOrProvince.trim().length > 0;
-    return hasPostalCode || hasCityAndState;
+    const hasCity = city.trim().length > 0;
+    const hasState = stateOrProvince.trim().length > 0;
+    return hasPostalCode && hasCity && hasState;
   };
 
   const handleSave = async () => {
     if (!isValid()) {
-      setError('Please enter a postal code OR city and state');
+      setError('City, state, AND postal code are all required');
       return;
     }
 
@@ -81,17 +83,10 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
 
       const locationData: SaveSellerLocationRequest = {
         country: 'US',
+        postal_code: postalCode.trim(),
+        city: city.trim(),
+        state_or_province: stateOrProvince.trim(),
       };
-
-      if (postalCode.trim()) {
-        locationData.postal_code = postalCode.trim();
-      }
-      if (city.trim()) {
-        locationData.city = city.trim();
-      }
-      if (stateOrProvince.trim()) {
-        locationData.state_or_province = stateOrProvince.trim();
-      }
       if (addressLine1.trim()) {
         locationData.address_line1 = addressLine1.trim();
       }
@@ -146,7 +141,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
         ) : (
           <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
             <Text style={styles.description}>
-              Enter your shipping location for eBay listings. This is required to publish items.
+              Enter your shipping location for eBay listings. City, state, and ZIP are required.
             </Text>
 
             {error && (
@@ -155,11 +150,12 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
               </View>
             )}
 
-            {/* Postal Code Section */}
+            {/* Required Fields */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Option 1: Postal Code</Text>
+              <Text style={styles.sectionTitle}>Required</Text>
+
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>ZIP/Postal Code</Text>
+                <Text style={styles.label}>ZIP/Postal Code *</Text>
                 <TextInput
                   style={styles.input}
                   value={postalCode}
@@ -171,21 +167,9 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
                   maxLength={20}
                 />
               </View>
-            </View>
-
-            {/* OR Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* City/State Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Option 2: City & State</Text>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>City</Text>
+                <Text style={styles.label}>City *</Text>
                 <TextInput
                   style={styles.input}
                   value={city}
@@ -198,7 +182,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>State/Province</Text>
+                <Text style={styles.label}>State *</Text>
                 <TextInput
                   style={styles.input}
                   value={stateOrProvince}
@@ -211,7 +195,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
               </View>
             </View>
 
-            {/* Optional Address */}
+            {/* Optional */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Optional</Text>
               <View style={styles.inputContainer}>
@@ -325,23 +309,6 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     color: '#333',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 8,
-    paddingHorizontal: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#ddd',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#999',
   },
   footer: {
     paddingVertical: 20,

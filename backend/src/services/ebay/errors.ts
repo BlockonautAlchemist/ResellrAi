@@ -53,6 +53,7 @@ export const EBAY_ERROR_CODES = {
   LOCATION_CREATE_FAILED: 'LOCATION_CREATE_FAILED',
   LOCATION_INVALID: 'LOCATION_INVALID',
   LOCATIONS_FETCH_FAILED: 'LOCATIONS_FETCH_FAILED',
+  EBAY_ADDRESS_INCOMPLETE: 'EBAY_ADDRESS_INCOMPLETE',
 
   // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
   SELLING_LIMIT_EXCEEDED: 'SELLING_LIMIT_EXCEEDED',
@@ -119,6 +120,7 @@ export const EBAY_ERROR_MESSAGES: Record<EbayErrorCode, string> = {
   LOCATION_CREATE_FAILED: 'Failed to create shipping location on eBay',
   LOCATION_INVALID: 'Invalid location address. Please provide city/state or postal code.',
   LOCATIONS_FETCH_FAILED: 'Failed to fetch shipping locations',
+  EBAY_ADDRESS_INCOMPLETE: 'US locations require city, state, AND postal code',
 
   // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
   SELLING_LIMIT_EXCEEDED: "You've reached your eBay selling limit. Request higher limits in eBay Seller Hub.",
@@ -191,6 +193,7 @@ const RECOVERY_ACTIONS: Record<EbayErrorCode, EbayErrorRecoveryAction> = {
   LOCATION_CREATE_FAILED: 'retry',
   LOCATION_INVALID: 'none', // User must fix address
   LOCATIONS_FETCH_FAILED: 'retry',
+  EBAY_ADDRESS_INCOMPLETE: 'none', // User must provide complete address
 
   // Business errors - user must resolve via eBay
   SELLING_LIMIT_EXCEEDED: 'none',

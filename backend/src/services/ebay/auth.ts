@@ -97,7 +97,10 @@ export class EbayAuthService {
 
     // Generate cryptographically secure state
     const state = generateOAuthState();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes (increased for robustness)
+
+    // Safe Supabase host identifier for debugging
+    const supabaseHost = new URL(env.SUPABASE_URL).hostname.split('.')[0];
 
     // Store state in database for CSRF validation
     const { error: insertError } = await this.supabase
@@ -110,9 +113,23 @@ export class EbayAuthService {
       });
 
     if (insertError) {
-      console.error('[eBay Auth] Failed to store auth state:', insertError);
+      console.error('[eBay Auth] Failed to store auth state:', {
+        supabaseHost,
+        statePrefix: state.substring(0, 8),
+        expiresAt: expiresAt.toISOString(),
+        errorCode: insertError.code,
+        errorMessage: insertError.message,
+        errorDetails: insertError.details,
+      });
       throw new Error('Failed to initiate OAuth flow');
     }
+
+    console.log('[eBay Auth] OAuth started:', {
+      userId,
+      statePrefix: state.substring(0, 8),
+      supabaseHost,
+      expiresAt: expiresAt.toISOString(),
+    });
 
     // Build authorization URL
     const urls = EBAY_API_URLS[env.EBAY_ENVIRONMENT as 'sandbox' | 'production'];
@@ -123,8 +140,6 @@ export class EbayAuthService {
     authUrl.searchParams.set('redirect_uri', env.EBAY_RUNAME!);
     authUrl.searchParams.set('scope', EBAY_REQUIRED_SCOPES.join(' '));
     authUrl.searchParams.set('state', state);
-
-    console.log(`[eBay Auth] OAuth started for user ${userId}, state: ${state.substring(0, 8)}...`);
 
     console.log('[eBay Auth] AUTHORIZE URL:', authUrl.toString());
     console.log('[eBay Auth] SCOPES:', EBAY_REQUIRED_SCOPES.join(' '));
@@ -153,7 +168,18 @@ export class EbayAuthService {
       .single();
 
     if (stateError || !authState) {
-      console.error('[eBay Auth] Invalid or expired state parameter');
+      const supabaseHost = new URL(env.SUPABASE_URL).hostname.split('.')[0];
+      console.error('[eBay Auth] State validation failed:', {
+        supabaseHost,
+        statePrefix: state.substring(0, 8),
+        currentTime: new Date().toISOString(),
+        expiryWindow: '30 minutes from OAuth start',
+        stateError: stateError ? {
+          code: stateError.code,
+          message: stateError.message,
+        } : null,
+        authStateFound: !!authState,
+      });
       throw new Error('Invalid or expired authorization state');
     }
 

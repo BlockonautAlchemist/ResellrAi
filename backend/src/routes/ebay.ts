@@ -325,11 +325,20 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
   } catch (error) {
     console.error('[eBay Routes] OAuth callback error:', error);
 
-    const errorMessage = error instanceof Error ? error.message : 'Connection failed';
+    const rawMessage = error instanceof Error ? error.message : 'Connection failed';
+
+    // User-friendly message for state validation failures
+    let userMessage = rawMessage;
+    let errorCode = 'callback_failed';
+    if (rawMessage === 'Invalid or expired authorization state') {
+      userMessage = 'Your authorization session expired. Please return to the app and try connecting again.';
+      errorCode = 'state_expired';
+    }
+
     const deepLink = buildOAuthDeepLink({
       success: false,
-      error: 'callback_failed',
-      message: errorMessage,
+      error: errorCode,
+      message: userMessage,
     });
 
     // Try automatic redirect for errors too
@@ -341,9 +350,9 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
 
     res.send(generateCallbackPage(
       false,
-      errorMessage,
+      userMessage,
       deepLink,
-      { error: errorMessage, timestamp }
+      { error: rawMessage, timestamp }
     ));
   }
 });
