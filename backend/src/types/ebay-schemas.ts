@@ -446,6 +446,44 @@ export const CreateLocationRequestSchema = z.object({
 });
 export type CreateLocationRequest = z.infer<typeof CreateLocationRequestSchema>;
 
+/**
+ * Request to save seller location profile
+ * Requires postal_code OR (city AND state_or_province)
+ */
+export const SaveSellerLocationRequestSchema = z
+  .object({
+    country: z.string().length(2).default('US'),
+    postal_code: z.string().max(64).optional(),
+    city: z.string().max(128).optional(),
+    state_or_province: z.string().max(128).optional(),
+    address_line1: z.string().max(128).optional(),
+  })
+  .refine(
+    (data) => {
+      const hasPostalCode = !!data.postal_code;
+      const hasCityAndState = !!data.city && !!data.state_or_province;
+      return hasPostalCode || hasCityAndState;
+    },
+    {
+      message: 'Either postal_code OR (city AND state_or_province) is required',
+    }
+  );
+export type SaveSellerLocationRequest = z.infer<typeof SaveSellerLocationRequestSchema>;
+
+/**
+ * Seller location profile stored in database
+ */
+export const SellerLocationProfileSchema = z.object({
+  user_id: z.string().uuid(),
+  country: z.string().length(2),
+  postal_code: z.string().max(64).nullable(),
+  city: z.string().max(128).nullable(),
+  state_or_province: z.string().max(128).nullable(),
+  address_line1: z.string().max(128).nullable(),
+  updated_at: z.string().datetime(),
+});
+export type SellerLocationProfile = z.infer<typeof SellerLocationProfileSchema>;
+
 // =============================================================================
 // ERROR SCHEMAS
 // =============================================================================

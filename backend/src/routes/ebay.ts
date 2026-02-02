@@ -35,6 +35,7 @@ import {
   EbayPublishResultSchema,
   PublishToEbayRequestSchema,
   CreateLocationRequestSchema,
+  SaveSellerLocationRequestSchema,
   getCompsSourceMessage,
 } from '../types/ebay-schemas.js';
 
@@ -849,6 +850,136 @@ router.post('/locations', requireEbayConfig, async (req: Request, res: Response)
       error: {
         code: 'LOCATION_CREATE_FAILED',
         message: error instanceof Error ? error.message : 'Failed to create location',
+      },
+    });
+  }
+});
+
+// =============================================================================
+// SELLER PROFILE LOCATION ROUTES
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/profile/location
+ * Get user's saved seller location profile
+ */
+router.get('/profile/location', requireEbayConfig, async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'User authentication required',
+        },
+      });
+      return;
+    }
+
+    const locationService = getEbayLocationService();
+    const profile = await locationService.getSellerProfile(userId);
+
+    if (!profile) {
+      res.json({
+        success: true,
+        profile: null,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      profile,
+    });
+  } catch (error) {
+    console.error('[eBay Routes] Get profile location error:', error);
+    res.status(500).json({
+      error: {
+        code: 'PROFILE_FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get profile location',
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/v1/ebay/profile/location
+ * Save user's seller location profile
+ *
+ * Body:
+ * - country?: string (default: "US")
+ * - postal_code?: string
+ * - city?: string
+ * - state_or_province?: string
+ * - address_line1?: string
+ *
+ * Validation: Requires postal_code OR (city AND state_or_province)
+ */
+router.post('/profile/location', requireEbayConfig, async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'User authentication required',
+        },
+      });
+      return;
+    }
+
+    // Validate request body
+    const parseResult = SaveSellerLocationRequestSchema.safeParse(req.body);
+
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parseResult.error.errors[0]?.message || 'Invalid request data',
+          details: parseResult.error.errors,
+        },
+      });
+      return;
+    }
+
+    const locationData = parseResult.data;
+
+    // Save to database
+    const locationService = getEbayLocationService();
+    const result = await locationService.saveSellerProfile(userId, locationData);
+
+    if (!result.success) {
+      res.status(400).json({
+        error: {
+          code: 'PROFILE_SAVE_FAILED',
+          message: result.error || 'Failed to save profile location',
+        },
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      profile: result.profile,
+    });
+  } catch (error) {
+    console.error('[eBay Routes] Save profile location error:', error);
+
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request data',
+          details: error.errors,
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'PROFILE_SAVE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to save profile location',
       },
     });
   }

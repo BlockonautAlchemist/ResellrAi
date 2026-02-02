@@ -183,7 +183,52 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION mark_expired_ebay_accounts IS 'Marks accounts with expired refresh tokens as expired';
 
 -- =============================================================================
--- PART 5: ROW LEVEL SECURITY (Enable when auth is implemented)
+-- PART 5: EBAY SELLER PROFILES TABLE
+-- =============================================================================
+
+-- Store seller's shipping location profile for creating eBay inventory locations
+-- NOTE: No foreign key on user_id for development flexibility (same pattern as ebay_accounts)
+CREATE TABLE IF NOT EXISTS ebay_seller_profiles (
+  -- Primary key is user_id (one profile per user)
+  -- No FK constraint - allows dev/test user IDs without auth.users entry
+  user_id UUID PRIMARY KEY,
+
+  -- Location data (country required, then postal_code OR city+state)
+  country VARCHAR(2) NOT NULL DEFAULT 'US',
+  postal_code VARCHAR(64),
+  city VARCHAR(128),
+  state_or_province VARCHAR(128),
+  address_line1 VARCHAR(128),
+
+  -- Timestamp
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- Constraint: must have postal_code OR (city AND state_or_province)
+  CONSTRAINT valid_location CHECK (
+    postal_code IS NOT NULL OR (city IS NOT NULL AND state_or_province IS NOT NULL)
+  )
+);
+
+-- Index for user lookup (already primary key, but explicit for clarity)
+CREATE INDEX IF NOT EXISTS idx_ebay_seller_profiles_user_id ON ebay_seller_profiles(user_id);
+
+-- Updated_at trigger for ebay_seller_profiles
+DROP TRIGGER IF EXISTS update_ebay_seller_profiles_updated_at ON ebay_seller_profiles;
+CREATE TRIGGER update_ebay_seller_profiles_updated_at
+  BEFORE UPDATE ON ebay_seller_profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Comments for ebay_seller_profiles
+COMMENT ON TABLE ebay_seller_profiles IS 'User shipping location profiles for eBay inventory locations';
+COMMENT ON COLUMN ebay_seller_profiles.country IS 'ISO 3166-1 alpha-2 country code (default US)';
+COMMENT ON COLUMN ebay_seller_profiles.postal_code IS 'ZIP/postal code - satisfies location requirement alone';
+COMMENT ON COLUMN ebay_seller_profiles.city IS 'City name - requires state_or_province to satisfy location';
+COMMENT ON COLUMN ebay_seller_profiles.state_or_province IS 'State/province - requires city to satisfy location';
+COMMENT ON COLUMN ebay_seller_profiles.address_line1 IS 'Optional street address for more precise location';
+
+-- =============================================================================
+-- PART 6: ROW LEVEL SECURITY (Enable when auth is implemented)
 -- =============================================================================
 
 -- Uncomment these when Supabase Auth is integrated:
@@ -217,6 +262,23 @@ COMMENT ON FUNCTION mark_expired_ebay_accounts IS 'Marks accounts with expired r
 --   FOR ALL
 --   USING (auth.uid() = user_id);
 
+-- ALTER TABLE ebay_seller_profiles ENABLE ROW LEVEL SECURITY;
+
+-- CREATE POLICY "Users can view their own seller profile"
+--   ON ebay_seller_profiles
+--   FOR SELECT
+--   USING (auth.uid() = user_id);
+
+-- CREATE POLICY "Users can insert their own seller profile"
+--   ON ebay_seller_profiles
+--   FOR INSERT
+--   WITH CHECK (auth.uid() = user_id);
+
+-- CREATE POLICY "Users can update their own seller profile"
+--   ON ebay_seller_profiles
+--   FOR UPDATE
+--   USING (auth.uid() = user_id);
+
 -- =============================================================================
 -- VERIFICATION QUERIES
 -- =============================================================================
@@ -240,8 +302,14 @@ COMMENT ON FUNCTION mark_expired_ebay_accounts IS 'Marks accounts with expired r
 -- WHERE table_name = 'ebay_auth_states'
 -- ORDER BY ordinal_position;
 
+-- Check ebay_seller_profiles table
+-- SELECT column_name, data_type, is_nullable
+-- FROM information_schema.columns
+-- WHERE table_name = 'ebay_seller_profiles'
+-- ORDER BY ordinal_position;
+
 -- Check indexes
 -- SELECT indexname, indexdef
 -- FROM pg_indexes
--- WHERE tablename IN ('listings', 'ebay_accounts', 'ebay_auth_states')
+-- WHERE tablename IN ('listings', 'ebay_accounts', 'ebay_auth_states', 'ebay_seller_profiles')
 -- AND indexname LIKE '%ebay%';

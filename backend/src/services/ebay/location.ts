@@ -9,12 +9,16 @@
  * Without a merchantLocationKey in the offer, publishOffer will fail.
  */
 
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { env } from '../../config/env.js';
 import { getEbayClient } from './client.js';
 import { getEbayAuthService } from './auth.js';
 import {
   type EbayInventoryLocationPayload,
   type EbayInventoryLocation,
   type CreateLocationRequest,
+  type SaveSellerLocationRequest,
+  type SellerLocationProfile,
 } from '../../types/ebay-schemas.js';
 
 // =============================================================================
@@ -60,6 +64,7 @@ interface EbayLocationsApiResponse {
 export class EbayLocationService {
   private ebayClient: ReturnType<typeof getEbayClient>;
   private authService: ReturnType<typeof getEbayAuthService>;
+  private supabase: SupabaseClient;
 
   // Default location key format
   private readonly DEFAULT_LOCATION_KEY = 'RESELLRAI_DEFAULT';
@@ -67,6 +72,72 @@ export class EbayLocationService {
   constructor() {
     this.ebayClient = getEbayClient();
     this.authService = getEbayAuthService();
+    this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+  }
+
+  /**
+   * Get seller's saved location profile from Supabase
+   */
+  async getSellerProfile(userId: string): Promise<SellerLocationProfile | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('ebay_seller_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return data as SellerLocationProfile;
+    } catch (error) {
+      console.error('[eBay Location] Error fetching seller profile:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Save or update seller's location profile in Supabase
+   */
+  async saveSellerProfile(
+    userId: string,
+    location: SaveSellerLocationRequest
+  ): Promise<{ success: boolean; profile?: SellerLocationProfile; error?: string }> {
+    try {
+      const { data, error } = await this.supabase
+        .from('ebay_seller_profiles')
+        .upsert(
+          {
+            user_id: userId,
+            country: location.country || 'US',
+            postal_code: location.postal_code || null,
+            city: location.city || null,
+            state_or_province: location.state_or_province || null,
+            address_line1: location.address_line1 || null,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id',
+          }
+        )
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[eBay Location] Error saving seller profile:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`[eBay Location] Saved seller profile for user ${userId}`);
+      return { success: true, profile: data as SellerLocationProfile };
+    } catch (error) {
+      console.error('[eBay Location] Error saving seller profile:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 
   /**
@@ -204,13 +275,19 @@ export class EbayLocationService {
    *
    * This is the primary method used by the listing service to ensure
    * a location exists before publishing.
+   *
+   * Priority order for location data:
+   * 1. defaultLocationData parameter (if provided)
+   * 2. eBay Identity API (seller's registration address)
+   * 3. Supabase ebay_seller_profiles table
+   * 4. If all fail: return structured error for frontend to handle
    */
   async ensureLocationExists(
     userId: string,
     defaultLocationData?: CreateLocationRequest
   ): Promise<{ success: boolean; locationKey?: string; error?: string }> {
     try {
-      // First, check if user already has locations
+      // First, check if user already has locations on eBay
       const existingLocations = await this.getInventoryLocations(userId);
 
       if (existingLocations.success && existingLocations.locations.length > 0) {
@@ -227,14 +304,57 @@ export class EbayLocationService {
         };
       }
 
-      // No locations exist, create a default one
-      // Use provided data or fall back to a minimal US location
-      const locationData: CreateLocationRequest = defaultLocationData || {
-        name: 'Default Shipping Location',
-        postalCode: '97201', // Portland, OR - neutral default
-        country: 'US',
-      };
+      // No locations exist, try to create one using priority order
+      let locationData: CreateLocationRequest | null = null;
 
+      // Priority 1: defaultLocationData parameter
+      if (defaultLocationData) {
+        console.log('[eBay Location] Using provided location data');
+        locationData = defaultLocationData;
+      }
+
+      // Priority 2: eBay Identity API (seller's registration address)
+      if (!locationData) {
+        const authService = getEbayAuthService();
+        const sellerAddress = await authService.getSellerAddress(userId);
+
+        if (sellerAddress && (sellerAddress.postalCode || (sellerAddress.city && sellerAddress.stateOrProvince))) {
+          console.log('[eBay Location] Using seller address from eBay Identity API');
+          locationData = sellerAddress;
+        }
+      }
+
+      // Priority 3: Supabase ebay_seller_profiles table
+      if (!locationData) {
+        const sellerProfile = await this.getSellerProfile(userId);
+
+        if (sellerProfile && (sellerProfile.postal_code || (sellerProfile.city && sellerProfile.state_or_province))) {
+          console.log('[eBay Location] Using seller profile from database');
+          locationData = {
+            name: 'Default Shipping Location',
+            addressLine1: sellerProfile.address_line1 || undefined,
+            city: sellerProfile.city || undefined,
+            stateOrProvince: sellerProfile.state_or_province || undefined,
+            postalCode: sellerProfile.postal_code || undefined,
+            country: sellerProfile.country || 'US',
+          };
+        }
+      }
+
+      // Priority 4: No location available - return structured error
+      if (!locationData) {
+        console.log('[eBay Location] No location data available, returning error for frontend');
+        return {
+          success: false,
+          error: JSON.stringify({
+            code: 'EBAY_LOCATION_REQUIRED',
+            message: 'Shipping location required to publish listings',
+            action: 'needs_location',
+          }),
+        };
+      }
+
+      // Create the location on eBay
       const createResult = await this.createInventoryLocation(
         userId,
         locationData,

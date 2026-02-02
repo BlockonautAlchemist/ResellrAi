@@ -22,8 +22,10 @@ import {
   type EbayPolicy,
   type EbayPublishStep,
   type EbayPublishResult,
+  type SellerLocationProfile,
 } from '../lib/api';
 import PublishProgress from '../components/PublishProgress';
+import LocationModal from '../components/LocationModal';
 import { TEMP_USER_ID } from '../lib/constants';
 
 interface ExportScreenProps {
@@ -54,6 +56,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   }>({});
   const [publishResult, setPublishResult] = useState<EbayPublishResult | null>(null);
   const [publishSteps, setPublishSteps] = useState<EbayPublishStep[] | null>(null);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [pendingRetry, setPendingRetry] = useState(false);
 
   const title = listing.listingDraft.title.value;
   const description = listing.listingDraft.description.value;
@@ -92,7 +96,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   // Map error codes to user-friendly messages and actions
-  const getErrorGuidance = (errorCode?: string): { message: string; action?: string } => {
+  const getErrorGuidance = (errorCode?: string): { message: string; action?: string; showModal?: boolean } => {
     switch (errorCode) {
       case 'INVALID_CATEGORY':
         return { message: 'Category not valid for eBay', action: 'Select a valid category in the Preview screen' };
@@ -110,11 +114,24 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         return { message: 'Publishing failed', action: 'Try again or contact support' };
       case 'LOCATION_REQUIRED':
         return { message: 'Shipping location required', action: 'Set up a shipping location in eBay Seller Hub' };
+      case 'EBAY_LOCATION_REQUIRED':
+        return { message: 'Shipping location required', action: 'Enter your shipping location to continue', showModal: true };
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
         return { message: 'eBay connection expired', action: 'Go to Home screen to reconnect your eBay account' };
       default:
         return { message: 'An error occurred', action: 'Please try again' };
+    }
+  };
+
+  // Check if error message contains EBAY_LOCATION_REQUIRED (from JSON error)
+  const isLocationRequiredError = (errorMessage?: string): boolean => {
+    if (!errorMessage) return false;
+    try {
+      const parsed = JSON.parse(errorMessage);
+      return parsed.code === 'EBAY_LOCATION_REQUIRED';
+    } catch {
+      return errorMessage.includes('EBAY_LOCATION_REQUIRED');
     }
   };
 
@@ -179,8 +196,18 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           ]
         );
       } else {
-        const guidance = getErrorGuidance(result.error?.code);
-        Alert.alert('Publish Failed', `${guidance.message}\n\n${guidance.action || ''}`);
+        // Check for EBAY_LOCATION_REQUIRED error
+        const errorCode = result.error?.code;
+        const errorMessage = result.error?.message;
+
+        if (errorCode === 'EBAY_LOCATION_REQUIRED' || isLocationRequiredError(errorMessage)) {
+          // Show location modal instead of alert
+          setPendingRetry(true);
+          setShowLocationModal(true);
+        } else {
+          const guidance = getErrorGuidance(errorCode);
+          Alert.alert('Publish Failed', `${guidance.message}\n\n${guidance.action || ''}`);
+        }
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to publish';
@@ -219,6 +246,22 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       );
     } catch (err) {
       Alert.alert('Error', 'Failed to mark as exported');
+    }
+  };
+
+  const handleLocationSaved = (profile: SellerLocationProfile) => {
+    setShowLocationModal(false);
+    // Clear previous error
+    setPublishResult(null);
+    setPublishSteps(null);
+
+    // Auto-retry if we were pending a retry
+    if (pendingRetry) {
+      setPendingRetry(false);
+      // Small delay to allow modal animation to complete
+      setTimeout(() => {
+        handlePublishToEbay();
+      }, 500);
     }
   };
 
@@ -401,6 +444,16 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Location Modal */}
+      <LocationModal
+        visible={showLocationModal}
+        onClose={() => {
+          setShowLocationModal(false);
+          setPendingRetry(false);
+        }}
+        onSaved={handleLocationSaved}
+      />
 
       {/* Policy Selection Modal */}
       <Modal

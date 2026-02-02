@@ -10,6 +10,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, type EbayConnectionStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
 import { TEMP_USER_ID } from '../lib/constants';
@@ -156,25 +157,40 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       setIsConnectingEbay(true);
       const { auth_url } = await startEbayOAuth(TEMP_USER_ID);
 
-      console.log('[HomeScreen] Opening eBay OAuth URL...');
+      // Validate the auth_url is an eBay authorization URL (not our backend callback)
+      const isValidEbayAuthUrl =
+        auth_url.startsWith('https://auth.ebay.com/oauth2/authorize') ||
+        auth_url.startsWith('https://auth.sandbox.ebay.com/oauth2/authorize');
+
+      if (!isValidEbayAuthUrl) {
+        console.error('[HomeScreen] Invalid auth_url - not an eBay authorize URL:', auth_url.substring(0, 80));
+        throw new Error('Received invalid eBay authorization URL from server');
+      }
+
+      // Safe debug logging: hostname + pathname, first 80 chars
+      try {
+        const authUrlObj = new URL(auth_url);
+        console.log('[HomeScreen] Opening eBay OAuth URL:', {
+          hostname: authUrlObj.hostname,
+          pathname: authUrlObj.pathname,
+          preview: auth_url.substring(0, 80) + '...',
+        });
+      } catch {
+        console.log('[HomeScreen] Opening eBay OAuth URL:', auth_url.substring(0, 80) + '...');
+      }
 
       // Mark that we're waiting for OAuth to complete
       pendingOAuthRef.current = true;
 
-      // Open eBay auth URL in browser
-      const supported = await Linking.canOpenURL(auth_url);
-      if (supported) {
-        await Linking.openURL(auth_url);
-        // Note: We keep isConnectingEbay true until we return from browser
-        // The AppState listener or deep link handler will clear it
-      } else {
-        pendingOAuthRef.current = false;
-        setIsConnectingEbay(false);
-        Alert.alert('Error', 'Cannot open eBay authorization page');
-      }
+      // Open eBay auth URL using expo-web-browser for better iOS reliability
+      await WebBrowser.openBrowserAsync(auth_url);
+
+      // Note: We keep isConnectingEbay true until we return from browser
+      // The AppState listener or deep link handler will clear it
     } catch (err) {
       pendingOAuthRef.current = false;
       setIsConnectingEbay(false);
+      console.error('[HomeScreen] eBay OAuth error:', err);
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start eBay connection');
     }
   };

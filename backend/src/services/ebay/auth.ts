@@ -25,6 +25,7 @@ import {
   type EbayConnectedAccount,
   type EbayAuthStartResponse,
   type EbayRedirectContext,
+  type CreateLocationRequest,
 } from '../../types/ebay-schemas.js';
 import { encryptToken, decryptToken, generateOAuthState } from './token-crypto.js';
 import { getEbayClient, type EbayTokenResponse } from './client.js';
@@ -124,6 +125,10 @@ export class EbayAuthService {
     authUrl.searchParams.set('state', state);
 
     console.log(`[eBay Auth] OAuth started for user ${userId}, state: ${state.substring(0, 8)}...`);
+
+    console.log('[eBay Auth] AUTHORIZE URL:', authUrl.toString());
+    console.log('[eBay Auth] SCOPES:', EBAY_REQUIRED_SCOPES.join(' '));
+    console.log('[eBay Auth] ENV:', env.EBAY_ENVIRONMENT, 'AUTH_BASE:', urls.auth);
 
     return {
       auth_url: authUrl.toString(),
@@ -492,6 +497,44 @@ export class EbayAuthService {
         userId: `ebay_${Date.now()}`,
         username: undefined,
       };
+    }
+  }
+
+  /**
+   * Get seller's registration address from eBay Identity API
+   * Used to create inventory locations with real address data
+   */
+  async getSellerAddress(userId: string): Promise<CreateLocationRequest | null> {
+    try {
+      const accessToken = await this.getAccessToken(userId);
+      const response = await this.ebayClient.authenticatedRequest<{
+        registrationAddress?: {
+          addressLine1?: string;
+          city?: string;
+          stateOrProvince?: string;
+          postalCode?: string;
+          country?: string;
+        };
+      }>(accessToken, {
+        method: 'GET',
+        path: '/commerce/identity/v1/user/',
+      });
+
+      if (response.success && response.data?.registrationAddress) {
+        const addr = response.data.registrationAddress;
+        return {
+          name: 'Seller Location',
+          addressLine1: addr.addressLine1,
+          city: addr.city,
+          stateOrProvince: addr.stateOrProvince,
+          postalCode: addr.postalCode,
+          country: addr.country || 'US',
+        };
+      }
+      return null;
+    } catch (error) {
+      console.warn('[eBay Auth] Failed to get seller address:', error);
+      return null;
     }
   }
 

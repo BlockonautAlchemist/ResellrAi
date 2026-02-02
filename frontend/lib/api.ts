@@ -362,6 +362,24 @@ export interface CategorySuggestionsResult {
   cacheAge?: number;
 }
 
+export interface SellerLocationProfile {
+  user_id: string;
+  country: string;
+  postal_code: string | null;
+  city: string | null;
+  state_or_province: string | null;
+  address_line1: string | null;
+  updated_at: string;
+}
+
+export interface SaveSellerLocationRequest {
+  country?: string;
+  postal_code?: string;
+  city?: string;
+  state_or_province?: string;
+  address_line1?: string;
+}
+
 /**
  * Check eBay integration status (system-level)
  */
@@ -432,7 +450,7 @@ export async function getEbayAccount(userId: string): Promise<EbayConnectedAccou
 
 /**
  * Start eBay OAuth flow
- * @param userId - Temporary user ID
+ * @param userId - User ID passed via x-user-id header
  * @returns Auth URL to open in browser
  */
 export async function startEbayOAuth(userId: string): Promise<{
@@ -441,16 +459,51 @@ export async function startEbayOAuth(userId: string): Promise<{
   expires_at: string;
 }> {
   const apiUrl = getApiUrlOrThrow();
-  const response = await fetch(
-    `${apiUrl}/api/v1/ebay/oauth/start?user_id=${userId}&redirect_context=mobile`
-  );
+  const startUrl = `${apiUrl}/api/v1/ebay/oauth/start?redirect_context=mobile`;
+
+  console.log('[eBay OAuth] Calling start endpoint:', startUrl);
+
+  const response = await fetch(startUrl, {
+    method: 'GET',
+    headers: {
+      'x-user-id': userId,
+    },
+  });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(error.error?.message || `OAuth start failed: ${response.status}`);
+    const responseText = await response.text();
+    console.log('[eBay OAuth] Start endpoint failed:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: responseText.substring(0, 200),
+    });
+    let errorMessage = `OAuth start failed: ${response.status}`;
+    try {
+      const errorData = JSON.parse(responseText);
+      if (errorData.error?.message) {
+        errorMessage = errorData.error.message;
+      }
+    } catch {
+      // Use default error message
+    }
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Safe logging: hostname + pathname, first 80 chars (no tokens/secrets)
+  try {
+    const authUrlObj = new URL(data.auth_url);
+    console.log('[eBay OAuth] Received auth_url:', {
+      hostname: authUrlObj.hostname,
+      pathname: authUrlObj.pathname,
+      preview: data.auth_url.substring(0, 80) + '...',
+    });
+  } catch {
+    console.log('[eBay OAuth] Received auth_url (invalid URL):', data.auth_url?.substring(0, 80));
+  }
+
+  return data;
 }
 
 /**
@@ -585,4 +638,55 @@ export async function suggestCategory(
 
   const result = await response.json();
   return result.data;
+}
+
+// =============================================================================
+// Seller Location Profile API
+// =============================================================================
+
+/**
+ * Get user's saved seller location profile
+ */
+export async function getSellerLocation(
+  userId: string
+): Promise<SellerLocationProfile | null> {
+  const apiUrl = getApiUrlOrThrow();
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/profile/location?user_id=${userId}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Get seller location failed: ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.profile;
+}
+
+/**
+ * Save user's seller location profile
+ */
+export async function saveSellerLocation(
+  userId: string,
+  location: SaveSellerLocationRequest
+): Promise<SellerLocationProfile> {
+  const apiUrl = getApiUrlOrThrow();
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/profile/location?user_id=${userId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(location),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    throw new Error(error.error?.message || `Save seller location failed: ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.profile;
 }
