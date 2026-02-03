@@ -54,6 +54,21 @@ export const EBAY_ERROR_CODES = {
   LOCATION_INVALID: 'LOCATION_INVALID',
   LOCATIONS_FETCH_FAILED: 'LOCATIONS_FETCH_FAILED',
   EBAY_ADDRESS_INCOMPLETE: 'EBAY_ADDRESS_INCOMPLETE',
+  LOCATION_NOT_ENABLED: 'LOCATION_NOT_ENABLED',
+
+  // Validation errors (publish pre-validation)
+  VALIDATION_TITLE_REQUIRED: 'VALIDATION_TITLE_REQUIRED',
+  VALIDATION_TITLE_TOO_LONG: 'VALIDATION_TITLE_TOO_LONG',
+  VALIDATION_DESCRIPTION_REQUIRED: 'VALIDATION_DESCRIPTION_REQUIRED',
+  VALIDATION_DESCRIPTION_TOO_LONG: 'VALIDATION_DESCRIPTION_TOO_LONG',
+  VALIDATION_NO_IMAGES: 'VALIDATION_NO_IMAGES',
+  VALIDATION_TOO_MANY_IMAGES: 'VALIDATION_TOO_MANY_IMAGES',
+  VALIDATION_INVALID_CONDITION: 'VALIDATION_INVALID_CONDITION',
+  VALIDATION_CATEGORY_REQUIRED: 'VALIDATION_CATEGORY_REQUIRED',
+  VALIDATION_INVALID_PRICE: 'VALIDATION_INVALID_PRICE',
+  VALIDATION_INVALID_QUANTITY: 'VALIDATION_INVALID_QUANTITY',
+  VALIDATION_POLICIES_INCOMPLETE: 'VALIDATION_POLICIES_INCOMPLETE',
+  VALIDATION_LOCATION_REQUIRED: 'VALIDATION_LOCATION_REQUIRED',
 
   // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
   SELLING_LIMIT_EXCEEDED: 'SELLING_LIMIT_EXCEEDED',
@@ -121,6 +136,21 @@ export const EBAY_ERROR_MESSAGES: Record<EbayErrorCode, string> = {
   LOCATION_INVALID: 'Invalid location address. Please provide city/state or postal code.',
   LOCATIONS_FETCH_FAILED: 'Failed to fetch shipping locations',
   EBAY_ADDRESS_INCOMPLETE: 'US locations require city, state, AND postal code',
+  LOCATION_NOT_ENABLED: 'Inventory location exists but is not ENABLED. Please enable it in eBay Seller Hub.',
+
+  // Validation errors
+  VALIDATION_TITLE_REQUIRED: 'Title is required',
+  VALIDATION_TITLE_TOO_LONG: 'Title exceeds maximum length of 80 characters',
+  VALIDATION_DESCRIPTION_REQUIRED: 'Description is required',
+  VALIDATION_DESCRIPTION_TOO_LONG: 'Description exceeds maximum length of 4000 characters',
+  VALIDATION_NO_IMAGES: 'At least one image is required',
+  VALIDATION_TOO_MANY_IMAGES: 'Maximum 12 images allowed',
+  VALIDATION_INVALID_CONDITION: 'Invalid condition value',
+  VALIDATION_CATEGORY_REQUIRED: 'Category ID is required',
+  VALIDATION_INVALID_PRICE: 'Price must be greater than 0',
+  VALIDATION_INVALID_QUANTITY: 'Quantity must be at least 1',
+  VALIDATION_POLICIES_INCOMPLETE: 'All 3 policy IDs are required (fulfillment, payment, return)',
+  VALIDATION_LOCATION_REQUIRED: 'Merchant location key is required',
 
   // eBay business errors (per EBAY_SOURCE_OF_TRUTH.md Section 9)
   SELLING_LIMIT_EXCEEDED: "You've reached your eBay selling limit. Request higher limits in eBay Seller Hub.",
@@ -194,12 +224,27 @@ const RECOVERY_ACTIONS: Record<EbayErrorCode, EbayErrorRecoveryAction> = {
   LOCATION_INVALID: 'none', // User must fix address
   LOCATIONS_FETCH_FAILED: 'retry',
   EBAY_ADDRESS_INCOMPLETE: 'none', // User must provide complete address
+  LOCATION_NOT_ENABLED: 'none', // User must enable via eBay Seller Hub
 
   // Business errors - user must resolve via eBay
   SELLING_LIMIT_EXCEEDED: 'none',
   CATEGORY_RESTRICTED: 'none',
   DUPLICATE_LISTING: 'none',
   ACCOUNT_SUSPENDED: 'none',
+
+  // Validation errors - user must fix input
+  VALIDATION_TITLE_REQUIRED: 'none',
+  VALIDATION_TITLE_TOO_LONG: 'none',
+  VALIDATION_DESCRIPTION_REQUIRED: 'none',
+  VALIDATION_DESCRIPTION_TOO_LONG: 'none',
+  VALIDATION_NO_IMAGES: 'none',
+  VALIDATION_TOO_MANY_IMAGES: 'none',
+  VALIDATION_INVALID_CONDITION: 'none',
+  VALIDATION_CATEGORY_REQUIRED: 'none',
+  VALIDATION_INVALID_PRICE: 'none',
+  VALIDATION_INVALID_QUANTITY: 'none',
+  VALIDATION_POLICIES_INCOMPLETE: 'none',
+  VALIDATION_LOCATION_REQUIRED: 'none',
 };
 
 // =============================================================================
@@ -401,4 +446,118 @@ export function logEbayError(
   };
 
   console.error(`[eBay Error] ${context}:`, JSON.stringify(logEntry, null, 2));
+}
+
+// =============================================================================
+// EBAY ERROR PARSING
+// =============================================================================
+
+/**
+ * eBay API error response structure
+ */
+interface EbayErrorBody {
+  errors?: Array<{
+    errorId: string;
+    domain?: string;
+    category?: string;
+    message: string;
+    longMessage?: string;
+    parameters?: Array<{ name: string; value: string }>;
+  }>;
+}
+
+/**
+ * Parsed eBay error with our internal code
+ */
+export interface ParsedEbayError {
+  code: EbayErrorCode;
+  message: string;
+  ebayErrorId?: string;
+  ebayMessage?: string;
+  action: string;
+}
+
+/**
+ * Parse eBay API error response body and map to our internal codes
+ */
+export function parseEbayErrorBody(
+  body: unknown,
+  statusCode: number
+): ParsedEbayError {
+  // Default error
+  const defaultError: ParsedEbayError = {
+    code: 'EBAY_API_ERROR',
+    message: `eBay API returned HTTP ${statusCode}`,
+    action: 'retry',
+  };
+
+  if (!body || typeof body !== 'object') {
+    return defaultError;
+  }
+
+  const errorBody = body as EbayErrorBody;
+  if (!errorBody.errors || errorBody.errors.length === 0) {
+    return defaultError;
+  }
+
+  const firstError = errorBody.errors[0];
+  const ebayErrorId = firstError.errorId;
+  const ebayMessage = firstError.longMessage || firstError.message;
+
+  // Map eBay error ID to our internal code
+  const internalCode = classifyEbayError(ebayErrorId, statusCode);
+  const action = RECOVERY_ACTIONS[internalCode] || 'none';
+
+  return {
+    code: internalCode,
+    message: EBAY_ERROR_MESSAGES[internalCode] || ebayMessage,
+    ebayErrorId,
+    ebayMessage,
+    action,
+  };
+}
+
+/**
+ * Common eBay error ID to our code mappings
+ * Per EBAY_SOURCE_OF_TRUTH.md Section 9
+ */
+export const EBAY_ERROR_ID_MAPPINGS: Record<string, { code: EbayErrorCode; action: string }> = {
+  '25003': { code: 'LOCATION_REQUIRED', action: 'create_location' },
+  '2004': { code: 'EBAY_ADDRESS_INCOMPLETE', action: 'needs_location' },
+  '21919188': { code: 'SELLING_LIMIT_EXCEEDED', action: 'contact_support' },
+  '21916012': { code: 'DUPLICATE_LISTING', action: 'none' },
+  '21916013': { code: 'SELLING_LIMIT_EXCEEDED', action: 'contact_support' },
+  '21916014': { code: 'CATEGORY_RESTRICTED', action: 'none' },
+  '21916289': { code: 'POLICIES_MISSING', action: 'none' },
+};
+
+/**
+ * Build a structured publish error response
+ */
+export function buildPublishError(
+  code: EbayErrorCode,
+  message: string,
+  traceId: string,
+  ebayErrorId?: string
+): {
+  error: {
+    code: string;
+    message: string;
+    action: string;
+    ebay_error_id?: string;
+  };
+  traceId: string;
+} {
+  const action = RECOVERY_ACTIONS[code] || 'none';
+  const actionString = action === 'none' ? 'check_details' : action;
+
+  return {
+    error: {
+      code,
+      message,
+      action: actionString,
+      ...(ebayErrorId && { ebay_error_id: ebayErrorId }),
+    },
+    traceId,
+  };
 }

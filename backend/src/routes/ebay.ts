@@ -26,6 +26,7 @@ import {
   createErrorResponse,
   EBAY_ERROR_CODES,
   logEbayError,
+  generateTraceId,
 } from '../services/ebay/index.js';
 import {
   EbayConnectedAccountSchema,
@@ -1000,50 +1001,46 @@ router.post('/profile/location', requireEbayConfig, async (req: Request, res: Re
 
 /**
  * POST /api/v1/ebay/listings/:id/publish
- * Publish a listing to eBay
+ * Publish a listing to eBay using the 6-step pipeline
  *
  * Requires:
  * - Connected eBay account
- * - Valid business policies
  * - Listing must exist and be in 'ready' status
  *
  * Body:
- * - policies.fulfillment_policy_id: string
- * - policies.payment_policy_id: string
- * - policies.return_policy_id: string
+ * - policies.fulfillment_policy_id: string (optional - will use defaults if not provided)
+ * - policies.payment_policy_id: string (optional - will use defaults if not provided)
+ * - policies.return_policy_id: string (optional - will use defaults if not provided)
  * - price_override?: number (optional, overrides listing price)
+ * - listing_data: object (required - the listing to publish)
+ *
+ * Response includes traceId for debugging
  */
 router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res: Response) => {
+  // Generate traceId at the start of the request
+  const traceId = generateTraceId();
+
   try {
     const userId = getUserId(req);
+    const listingId = req.params.id;
+
+    console.log(`[eBay Routes] Publish request started { traceId: ${traceId}, listingId: ${listingId} }`);
+
     if (!userId) {
       res.status(401).json({
         error: {
           code: 'AUTH_REQUIRED',
           message: 'User authentication required',
         },
+        traceId,
       });
       return;
     }
-
-    const listingId = req.params.id;
 
     // Validate request body
     const body = PublishToEbayRequestSchema.parse(req.body);
 
-    if (!body.policies) {
-      res.status(400).json({
-        error: {
-          code: 'POLICIES_REQUIRED',
-          message: 'Business policies are required. Fetch from GET /api/v1/ebay/policies',
-        },
-      });
-      return;
-    }
-
     // Get listing from database
-    // Note: This would typically come from the listings service
-    // For now, we'll require the listing data in the request or fetch it
     const listingData = req.body.listing_data;
 
     if (!listingData) {
@@ -1052,12 +1049,15 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
           code: 'LISTING_DATA_REQUIRED',
           message: 'Listing data is required in request body',
         },
+        traceId,
       });
       return;
     }
 
     // Build draft from listing data
     const listingService = getEbayListingService();
+    const policyService = getEbayPolicyService();
+
     const draft = listingService.buildDraftFromListing(
       listingId,
       listingData.listing_draft,
@@ -1065,40 +1065,40 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
       body.price_override || listingData.pricing_suggestion?.midPrice || 0
     );
 
-    // Validate draft has required fields
-    if (!draft.title || !draft.description || draft.price.value <= 0) {
-      res.status(400).json({
-        error: {
-          code: 'INVALID_LISTING',
-          message: 'Listing must have title, description, and valid price',
-        },
-      });
-      return;
+    // Resolve policies: use provided or fetch defaults
+    let policies = body.policies;
+    if (!policies) {
+      console.log(`[eBay Routes] No policies provided, fetching defaults { traceId: ${traceId} }`);
+      const defaultPolicies = await policyService.getDefaultPolicies(userId);
+
+      if (defaultPolicies.fulfillment_policy_id &&
+          defaultPolicies.payment_policy_id &&
+          defaultPolicies.return_policy_id) {
+        policies = {
+          fulfillment_policy_id: defaultPolicies.fulfillment_policy_id,
+          payment_policy_id: defaultPolicies.payment_policy_id,
+          return_policy_id: defaultPolicies.return_policy_id,
+        };
+        console.log(`[eBay Routes] Using default policies { traceId: ${traceId} }`);
+      }
+      // If defaults are incomplete, publishFixedPriceListing will handle the error
     }
 
-    if (draft.image_urls.length === 0) {
-      res.status(400).json({
-        error: {
-          code: 'IMAGES_REQUIRED',
-          message: 'At least one image is required',
-        },
-      });
-      return;
-    }
+    // Publish to eBay using the 6-step pipeline
+    const result = await listingService.publishFixedPriceListing(userId, draft, policies);
 
-    // Publish to eBay
-    const result = await listingService.publishListing(userId, draft, body.policies);
-
-    // Validate response
+    // Validate response (traceId is now included in the result)
     const validated = EbayPublishResultSchema.parse(result);
 
     if (validated.success) {
+      console.log(`[eBay Routes] Publish successful { traceId: ${traceId}, listingId: ${validated.listing_id} }`);
       res.json(validated);
     } else {
+      console.log(`[eBay Routes] Publish failed { traceId: ${traceId}, error: ${validated.error?.code} }`);
       res.status(400).json(validated);
     }
   } catch (error) {
-    console.error('[eBay Routes] Publish error:', error);
+    console.error(`[eBay Routes] Publish error { traceId: ${traceId} }:`, error);
 
     if (error instanceof z.ZodError) {
       res.status(400).json({
@@ -1107,6 +1107,7 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
           message: 'Invalid request data',
           details: error.errors,
         },
+        traceId,
       });
       return;
     }
@@ -1116,6 +1117,7 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
         code: 'PUBLISH_FAILED',
         message: error instanceof Error ? error.message : 'Failed to publish listing',
       },
+      traceId,
     });
   }
 });

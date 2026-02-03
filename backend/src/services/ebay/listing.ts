@@ -1,19 +1,24 @@
 /**
  * eBay Listing Service
  *
- * Handles the complete flow to publish a listing to eBay:
- * 1. Create/replace inventory item (SKU)
- * 2. Create offer
- * 3. Publish offer
+ * Handles the complete 6-step pipeline to publish a listing to eBay:
+ * 1. Location: Ensure inventory location exists and is ENABLED
+ * 2. Inventory: Create/replace inventory item (SKU)
+ * 3. Policies: Fetch/validate policies (use defaults if not provided)
+ * 4. Offer: Create offer with policies and location
+ * 5. Fees: (Optional) Get listing fees
+ * 6. Publish: Publish offer to make it live
  *
  * Uses eBay Sell Inventory API.
- * Requires user to have connected eBay account and configured policies.
+ * Requires user to have connected eBay account.
  */
 
 import { getEbayClient } from './client.js';
 import { getEbayAuthService } from './auth.js';
 import { getEbayPolicyService } from './policy.js';
 import { getEbayLocationService } from './location.js';
+import { generateTraceId, createPublishLogger, type PublishLogger } from './publish-logger.js';
+import { validatePublishInput, formatValidationErrors } from './publish-validator.js';
 import {
   generateEbaySku,
   type EbayInventoryItemPayload,
@@ -21,6 +26,7 @@ import {
   type EbayPublishResult,
   type EbayPublishStep,
   type EbayListingDraft,
+  type EbayListingFees,
 } from '../../types/ebay-schemas.js';
 
 // =============================================================================
@@ -83,15 +89,10 @@ export class EbayListingService {
   }
 
   /**
-   * Publish a listing to eBay
+   * Publish a listing to eBay (backward-compatible wrapper)
    *
-   * Full flow:
-   * 1. Validate user has connected eBay account
-   * 2. Validate user has required policies
-   * 3. Create/update inventory item
-   * 4. Create offer
-   * 5. Publish offer
-   * 6. Return listing URL with step-by-step progress
+   * This method wraps publishFixedPriceListing for backward compatibility.
+   * New code should use publishFixedPriceListing directly.
    */
   async publishListing(
     userId: string,
@@ -102,119 +103,274 @@ export class EbayListingService {
       return_policy_id: string;
     }
   ): Promise<EbayPublishResult> {
+    return this.publishFixedPriceListing(userId, draft, policies);
+  }
+
+  /**
+   * Publish a fixed-price listing to eBay using the 6-step pipeline
+   *
+   * Pipeline steps:
+   * 1. Location: Ensure inventory location exists and is ENABLED
+   * 2. Inventory: Create/replace inventory item (SKU)
+   * 3. Policies: Fetch/validate policies (use defaults if not provided)
+   * 4. Offer: Create offer with policies and location
+   * 5. Fees: (Optional) Get listing fees
+   * 6. Publish: Publish offer to make it live
+   *
+   * @param userId - User ID
+   * @param draft - Listing draft with all required fields
+   * @param policies - Optional policies (will fetch defaults if not provided)
+   * @param options - Optional configuration (e.g., enableFees)
+   */
+  async publishFixedPriceListing(
+    userId: string,
+    draft: EbayListingDraft,
+    policies?: {
+      fulfillment_policy_id: string;
+      payment_policy_id: string;
+      return_policy_id: string;
+    },
+    options?: {
+      enableFees?: boolean;
+    }
+  ): Promise<EbayPublishResult> {
+    const traceId = generateTraceId();
+    const logger = createPublishLogger(traceId);
     const attemptedAt = new Date().toISOString();
     const warnings: Array<{ code: string; message: string }> = [];
 
-    // Initialize steps tracking
+    // Initialize 6-step tracking
     const steps: EbayPublishStep[] = [
-      { step: 1, name: 'inventory', status: 'pending' },
-      { step: 2, name: 'offer', status: 'pending' },
-      { step: 3, name: 'publish', status: 'pending' },
+      { step: 1, name: 'location', status: 'pending' },
+      { step: 2, name: 'inventory', status: 'pending' },
+      { step: 3, name: 'policies', status: 'pending' },
+      { step: 4, name: 'offer', status: 'pending' },
+      { step: 5, name: 'fees', status: 'pending' },
+      { step: 6, name: 'publish', status: 'pending' },
     ];
 
+    // Helper to build error result with traceId
+    const errorResult = (
+      code: string,
+      message: string,
+      action: string,
+      partial?: { offerId?: string; sku?: string; ebayErrorId?: string }
+    ): EbayPublishResult => ({
+      success: false,
+      offer_id: partial?.offerId,
+      sku: partial?.sku,
+      steps,
+      error: {
+        code,
+        message,
+        action,
+        ...(partial?.ebayErrorId && { ebay_error_id: partial.ebayErrorId }),
+      },
+      traceId,
+      attempted_at: attemptedAt,
+    });
+
     try {
-      console.log(`[eBay Listing] Starting publish for listing ${draft.listing_id}...`);
+      logger.logInfo('Starting publish pipeline', { listingId: draft.listing_id });
+
+      // ===== STEP 0: Pre-Validation (before any eBay calls) =====
+      const validation = validatePublishInput(draft, policies);
+      if (!validation.valid) {
+        const formatted = formatValidationErrors(validation.errors);
+        for (const err of validation.errors) {
+          logger.logValidationError(err.field, err.message);
+        }
+        return errorResult(formatted.code, formatted.message, 'check_details');
+      }
 
       // Pre-validation: eBay connection
       const account = await this.authService.getConnectedAccount(userId);
       if (!account.connected) {
-        return this.errorResultWithSteps(
-          'EBAY_NOT_CONNECTED',
-          'Please connect your eBay account first',
-          'reauth',
-          attemptedAt,
-          steps
-        );
+        return errorResult('EBAY_NOT_CONNECTED', 'Please connect your eBay account first', 'reauth');
       }
-
       if (account.needs_reauth) {
-        return this.errorResultWithSteps(
-          'EBAY_REAUTH_REQUIRED',
-          'Please reconnect your eBay account',
-          'reauth',
-          attemptedAt,
-          steps
-        );
+        return errorResult('EBAY_REAUTH_REQUIRED', 'Please reconnect your eBay account', 'reauth');
       }
 
-      // Pre-validation: Get access token
+      // Get access token
       const accessToken = await this.authService.getAccessToken(userId);
 
-      // Pre-validation: Ensure inventory location exists (REQUIRED per EBAY_SOURCE_OF_TRUTH.md Section 7)
+      // ===== STEP 1: Location =====
+      logger.logStepStart('location');
+      steps[0].status = 'in_progress';
+
       const locationResult = await this.locationService.ensureLocationExists(userId);
       if (!locationResult.success || !locationResult.locationKey) {
-        return this.errorResultWithSteps(
+        steps[0].status = 'failed';
+        steps[0].error = locationResult.error;
+        logger.logStepFailed('location', locationResult.error || 'Failed to ensure location');
+        return errorResult(
           'LOCATION_REQUIRED',
           locationResult.error || 'Please set up a shipping location before listing',
-          'create_location',
-          attemptedAt,
-          steps
+          'create_location'
         );
       }
+
+      // Verify location is ENABLED
+      const locationDetails = await this.locationService.getInventoryLocationByKey(
+        userId,
+        locationResult.locationKey
+      );
+      if (locationDetails.location?.merchantLocationStatus !== 'ENABLED') {
+        steps[0].status = 'failed';
+        steps[0].error = 'Location not ENABLED';
+        logger.logStepFailed('location', `Location status: ${locationDetails.location?.merchantLocationStatus}`);
+        return errorResult(
+          'LOCATION_NOT_ENABLED',
+          'Inventory location exists but is not ENABLED. Please enable it in eBay Seller Hub.',
+          'check_details'
+        );
+      }
+
       const locationKey = locationResult.locationKey;
-      console.log(`[eBay Listing] Using location: ${locationKey}`);
+      steps[0].status = 'complete';
+      steps[0].merchant_location_key = locationKey;
+      logger.logStepComplete('location', { merchantLocationKey: locationKey, status: 'ENABLED' });
 
       // Generate SKU
       const sku = generateEbaySku(draft.listing_id);
-      console.log(`[eBay Listing] Generated SKU: ${sku}`);
+      logger.logInfo('Generated SKU', { sku });
 
-      // ===== STEP 1: Create/update inventory item =====
-      steps[0].status = 'in_progress';
-      const inventoryResult = await this.createInventoryItem(accessToken, sku, draft);
+      // ===== STEP 2: Inventory Item =====
+      logger.logStepStart('inventory');
+      steps[1].status = 'in_progress';
+
+      const inventoryResult = await this.createInventoryItemWithLogger(accessToken, sku, draft, logger);
       if (!inventoryResult.success) {
-        steps[0].status = 'failed';
-        steps[0].error = inventoryResult.error;
-        return this.errorResultWithSteps(
+        steps[1].status = 'failed';
+        steps[1].error = inventoryResult.error;
+        logger.logStepFailed('inventory', inventoryResult.error || 'Failed to create inventory item');
+        return errorResult(
           'INVENTORY_ITEM_FAILED',
           inventoryResult.error || 'Failed to create inventory item',
           'retry',
-          attemptedAt,
-          steps,
-          { sku }
-        );
-      }
-      steps[0].status = 'complete';
-      steps[0].item_sku = sku;
-
-      // ===== STEP 2: Create offer =====
-      steps[1].status = 'in_progress';
-      const offerResult = await this.createOffer(accessToken, sku, draft, policies, locationKey);
-      if (!offerResult.success || !offerResult.offerId) {
-        steps[1].status = 'failed';
-        steps[1].error = offerResult.error;
-        return this.errorResultWithSteps(
-          'OFFER_CREATE_FAILED',
-          offerResult.error || 'Failed to create offer',
-          'check_details',
-          attemptedAt,
-          steps,
-          { sku }
+          { sku, ebayErrorId: inventoryResult.ebayErrorId }
         );
       }
       steps[1].status = 'complete';
-      steps[1].offer_id = offerResult.offerId;
+      steps[1].item_sku = sku;
+      logger.logStepComplete('inventory', { sku });
+
+      // ===== STEP 3: Policies =====
+      logger.logStepStart('policies');
+      steps[2].status = 'in_progress';
+
+      let resolvedPolicies = policies;
+      if (!resolvedPolicies) {
+        // Fetch default policies
+        const defaultPolicies = await this.policyService.getDefaultPolicies(userId);
+        if (!defaultPolicies.fulfillment_policy_id || !defaultPolicies.payment_policy_id || !defaultPolicies.return_policy_id) {
+          steps[2].status = 'failed';
+          steps[2].error = 'Missing required policies';
+          logger.logStepFailed('policies', 'One or more default policies not found');
+          return errorResult(
+            'POLICIES_MISSING',
+            'Missing required business policies. Please configure them in eBay Seller Hub.',
+            'check_details'
+          );
+        }
+        resolvedPolicies = {
+          fulfillment_policy_id: defaultPolicies.fulfillment_policy_id,
+          payment_policy_id: defaultPolicies.payment_policy_id,
+          return_policy_id: defaultPolicies.return_policy_id,
+        };
+        logger.logInfo('Using default policies');
+      }
+
+      // Validate all 3 policies are present
+      if (!resolvedPolicies.fulfillment_policy_id || !resolvedPolicies.payment_policy_id || !resolvedPolicies.return_policy_id) {
+        steps[2].status = 'failed';
+        steps[2].error = 'Incomplete policies';
+        logger.logStepFailed('policies', 'All 3 policy IDs are required');
+        return errorResult(
+          'POLICIES_MISSING',
+          'All 3 policy IDs are required (fulfillment, payment, return)',
+          'check_details'
+        );
+      }
+
+      steps[2].status = 'complete';
+      logger.logStepComplete('policies', {
+        fulfillment: resolvedPolicies.fulfillment_policy_id,
+        payment: resolvedPolicies.payment_policy_id,
+        return: resolvedPolicies.return_policy_id,
+      });
+
+      // ===== STEP 4: Create Offer =====
+      logger.logStepStart('offer');
+      steps[3].status = 'in_progress';
+
+      const offerResult = await this.createOfferWithLogger(
+        accessToken,
+        sku,
+        draft,
+        resolvedPolicies,
+        locationKey,
+        logger
+      );
+      if (!offerResult.success || !offerResult.offerId) {
+        steps[3].status = 'failed';
+        steps[3].error = offerResult.error;
+        logger.logStepFailed('offer', offerResult.error || 'Failed to create offer');
+        return errorResult(
+          'OFFER_CREATE_FAILED',
+          offerResult.error || 'Failed to create offer',
+          'check_details',
+          { sku, ebayErrorId: offerResult.ebayErrorId }
+        );
+      }
+      steps[3].status = 'complete';
+      steps[3].offer_id = offerResult.offerId;
+      logger.logStepComplete('offer', { offerId: offerResult.offerId });
 
       if (offerResult.warnings) {
         warnings.push(...offerResult.warnings);
       }
 
-      // ===== STEP 3: Publish offer =====
-      steps[2].status = 'in_progress';
-      const publishResult = await this.publishOffer(accessToken, offerResult.offerId);
+      // ===== STEP 5: Listing Fees (Optional) =====
+      let fees: EbayListingFees | undefined;
+      if (options?.enableFees) {
+        logger.logStepStart('fees');
+        steps[4].status = 'in_progress';
+
+        const feesResult = await this.getListingFeesWithLogger(accessToken, offerResult.offerId, logger);
+        if (feesResult.success && feesResult.fees) {
+          fees = feesResult.fees;
+          steps[4].status = 'complete';
+          logger.logStepComplete('fees', { totalFee: feesResult.fees.total_fee?.value || '0' });
+        } else {
+          // Fees step is optional, so just skip on failure
+          steps[4].status = 'skipped';
+          logger.logStepSkipped('fees', feesResult.error || 'Failed to fetch fees');
+        }
+      } else {
+        steps[4].status = 'skipped';
+        logger.logStepSkipped('fees', 'Fees step disabled');
+      }
+
+      // ===== STEP 6: Publish Offer =====
+      logger.logStepStart('publish');
+      steps[5].status = 'in_progress';
+
+      const publishResult = await this.publishOfferWithLogger(accessToken, offerResult.offerId, logger);
       if (!publishResult.success || !publishResult.listingId) {
-        steps[2].status = 'failed';
-        steps[2].error = publishResult.error;
-        return this.errorResultWithSteps(
+        steps[5].status = 'failed';
+        steps[5].error = publishResult.error;
+        logger.logStepFailed('publish', publishResult.error || 'Failed to publish offer');
+        return errorResult(
           'OFFER_PUBLISH_FAILED',
           publishResult.error || 'Failed to publish offer',
           'retry',
-          attemptedAt,
-          steps,
-          { offerId: offerResult.offerId, sku }
+          { offerId: offerResult.offerId, sku, ebayErrorId: publishResult.ebayErrorId }
         );
       }
-      steps[2].status = 'complete';
-      steps[2].listing_id = publishResult.listingId;
+      steps[5].status = 'complete';
+      steps[5].listing_id = publishResult.listingId;
 
       if (publishResult.warnings) {
         warnings.push(...publishResult.warnings);
@@ -222,7 +378,7 @@ export class EbayListingService {
 
       // Success!
       const listingUrl = `https://www.ebay.com/itm/${publishResult.listingId}`;
-      console.log(`[eBay Listing] Successfully published: ${listingUrl}`);
+      logger.logStepComplete('publish', { listingId: publishResult.listingId, listingUrl });
 
       return {
         success: true,
@@ -231,19 +387,17 @@ export class EbayListingService {
         sku,
         listing_url: listingUrl,
         steps,
+        fees,
         warnings: warnings.length > 0 ? warnings : undefined,
+        traceId,
         published_at: new Date().toISOString(),
         attempted_at: attemptedAt,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      logger.logStepFailed('publish', `Unexpected error: ${errorMessage}`);
       console.error('[eBay Listing] Publish error:', error);
-      return this.errorResultWithSteps(
-        'PUBLISH_ERROR',
-        error instanceof Error ? error.message : 'Unknown error occurred',
-        'retry',
-        attemptedAt,
-        steps
-      );
+      return errorResult('PUBLISH_ERROR', errorMessage, 'retry');
     }
   }
 
@@ -465,6 +619,320 @@ export class EbayListingService {
       return {
         success: false,
         error: userMessage,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  // =============================================================================
+  // PRIVATE METHODS WITH LOGGER (6-step pipeline)
+  // =============================================================================
+
+  /**
+   * Create or replace inventory item with structured logging
+   */
+  private async createInventoryItemWithLogger(
+    accessToken: string,
+    sku: string,
+    draft: EbayListingDraft,
+    logger: PublishLogger
+  ): Promise<{ success: boolean; error?: string; ebayErrorId?: string }> {
+    try {
+      const payload: EbayInventoryItemPayload = {
+        sku,
+        locale: 'en_US',
+        product: {
+          title: draft.title,
+          description: draft.description,
+          imageUrls: draft.image_urls,
+          aspects: this.convertToAspects(draft.item_specifics),
+        },
+        condition: CONDITION_MAP[draft.condition.id] || 'GOOD',
+        conditionDescription: draft.condition.description,
+        availability: {
+          shipToLocationAvailability: {
+            quantity: draft.quantity,
+          },
+        },
+      };
+
+      const path = `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`;
+      const response = await this.ebayClient.authenticatedRequest<void>(accessToken, {
+        method: 'PUT',
+        path,
+        body: payload,
+        headers: {
+          'Content-Language': 'en-US',
+        },
+      });
+
+      logger.logApiCall({
+        step: 'inventory',
+        method: 'PUT',
+        path,
+        statusCode: response.statusCode,
+        payloadKeys: ['sku', 'locale', 'product', 'condition', 'availability'],
+        safeValues: { sku },
+      });
+
+      if (response.statusCode === 204 || response.statusCode === 200) {
+        return { success: true };
+      }
+
+      // Log raw error for debugging
+      const errorInfo = response.error?.error;
+      logger.logInfo('API error response', {
+        status: String(response.statusCode),
+        errorCode: errorInfo?.code || 'unknown',
+        errorMessage: errorInfo?.message || 'no message',
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : 'none',
+      });
+
+      return {
+        success: false,
+        error: errorInfo?.message || `eBay API returned HTTP ${response.statusCode}`,
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : undefined,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Create offer with structured logging
+   */
+  private async createOfferWithLogger(
+    accessToken: string,
+    sku: string,
+    draft: EbayListingDraft,
+    policies: {
+      fulfillment_policy_id: string;
+      payment_policy_id: string;
+      return_policy_id: string;
+    },
+    locationKey: string,
+    logger: PublishLogger
+  ): Promise<{
+    success: boolean;
+    offerId?: string;
+    warnings?: Array<{ code: string; message: string }>;
+    error?: string;
+    ebayErrorId?: string;
+  }> {
+    try {
+      const payload: EbayOfferPayload = {
+        sku,
+        marketplaceId: 'EBAY_US',
+        format: 'FIXED_PRICE',
+        categoryId: draft.category_id,
+        merchantLocationKey: locationKey,
+        pricingSummary: {
+          price: {
+            value: draft.price.value.toFixed(2),
+            currency: draft.price.currency,
+          },
+        },
+        availableQuantity: draft.quantity,
+        listingPolicies: {
+          fulfillmentPolicyId: policies.fulfillment_policy_id,
+          paymentPolicyId: policies.payment_policy_id,
+          returnPolicyId: policies.return_policy_id,
+        },
+      };
+
+      const path = '/sell/inventory/v1/offer';
+      const response = await this.ebayClient.authenticatedRequest<EbayCreateOfferResponse>(
+        accessToken,
+        {
+          method: 'POST',
+          path,
+          body: payload,
+          headers: {
+            'Content-Language': 'en-US',
+          },
+        }
+      );
+
+      logger.logApiCall({
+        step: 'offer',
+        method: 'POST',
+        path,
+        statusCode: response.statusCode,
+        payloadKeys: ['sku', 'marketplaceId', 'format', 'categoryId', 'merchantLocationKey', 'pricingSummary', 'listingPolicies'],
+        safeValues: { sku, merchantLocationKey: locationKey, marketplaceId: 'EBAY_US' },
+      });
+
+      if (response.success && response.data?.offerId) {
+        return {
+          success: true,
+          offerId: response.data.offerId,
+          warnings: response.data.warnings?.map((w) => ({
+            code: w.errorId,
+            message: w.message,
+          })),
+        };
+      }
+
+      // Log raw error for debugging
+      const errorInfo = response.error?.error;
+      logger.logInfo('API error response', {
+        status: String(response.statusCode),
+        errorCode: errorInfo?.code || 'unknown',
+        errorMessage: errorInfo?.message || 'no message',
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : 'none',
+      });
+
+      return {
+        success: false,
+        error: errorInfo?.message || `eBay API returned HTTP ${response.statusCode}`,
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : undefined,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Get listing fees with structured logging
+   */
+  private async getListingFeesWithLogger(
+    accessToken: string,
+    offerId: string,
+    logger: PublishLogger
+  ): Promise<{
+    success: boolean;
+    fees?: EbayListingFees;
+    error?: string;
+  }> {
+    try {
+      const path = `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/get_listing_fees`;
+      const response = await this.ebayClient.authenticatedRequest<{
+        feeSummaries?: Array<{
+          marketplaceId: string;
+          fees?: Array<{
+            feeType: string;
+            amount: { value: string; currency: string };
+          }>;
+        }>;
+      }>(accessToken, {
+        method: 'POST',
+        path,
+      });
+
+      logger.logApiCall({
+        step: 'fees',
+        method: 'POST',
+        path,
+        statusCode: response.statusCode,
+        safeValues: { offerId },
+      });
+
+      if (response.success && response.data?.feeSummaries) {
+        const summary = response.data.feeSummaries[0];
+        const listingFees = summary?.fees?.map((f) => ({
+          fee_type: f.feeType,
+          amount: f.amount,
+        }));
+
+        // Calculate total fee
+        let totalValue = 0;
+        let currency = 'USD';
+        for (const fee of listingFees || []) {
+          totalValue += parseFloat(fee.amount.value);
+          currency = fee.amount.currency;
+        }
+
+        return {
+          success: true,
+          fees: {
+            marketplace_id: 'EBAY_US',
+            listing_fees: listingFees,
+            total_fee: {
+              value: totalValue.toFixed(2),
+              currency,
+            },
+          },
+        };
+      }
+
+      return {
+        success: false,
+        error: 'Failed to fetch listing fees',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Publish offer with structured logging
+   */
+  private async publishOfferWithLogger(
+    accessToken: string,
+    offerId: string,
+    logger: PublishLogger
+  ): Promise<{
+    success: boolean;
+    listingId?: string;
+    warnings?: Array<{ code: string; message: string }>;
+    error?: string;
+    ebayErrorId?: string;
+  }> {
+    try {
+      const path = `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/publish`;
+      const response = await this.ebayClient.authenticatedRequest<EbayPublishOfferResponse>(
+        accessToken,
+        {
+          method: 'POST',
+          path,
+        }
+      );
+
+      logger.logApiCall({
+        step: 'publish',
+        method: 'POST',
+        path,
+        statusCode: response.statusCode,
+        safeValues: { offerId },
+      });
+
+      if (response.success && response.data?.listingId) {
+        return {
+          success: true,
+          listingId: response.data.listingId,
+          warnings: response.data.warnings?.map((w) => ({
+            code: w.errorId,
+            message: w.message,
+          })),
+        };
+      }
+
+      // Log raw error for debugging
+      const errorInfo = response.error?.error;
+      logger.logInfo('API error response', {
+        status: String(response.statusCode),
+        errorCode: errorInfo?.code || 'unknown',
+        errorMessage: errorInfo?.message || 'no message',
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : 'none',
+      });
+
+      return {
+        success: false,
+        error: errorInfo?.message || `eBay API returned HTTP ${response.statusCode}`,
+        ebayErrorId: errorInfo?.ebay_error_id != null ? String(errorInfo.ebay_error_id) : undefined,
       };
     } catch (error) {
       return {

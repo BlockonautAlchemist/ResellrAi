@@ -50,5 +50,28 @@ export {
   requiresReauth,
   classifyEbayError,
   logEbayError,
+  parseEbayErrorBody,
+  buildPublishError,
+  EBAY_ERROR_ID_MAPPINGS,
   type EbayErrorCode,
+  type ParsedEbayError,
 } from './errors.js';
+
+// Publish pipeline utilities
+export {
+  generateTraceId,
+  createPublishLogger,
+  type PublishLogger,
+  type PublishStepName,
+  type ApiCallLogParams,
+} from './publish-logger.js';
+
+// Publish validation utilities
+export {
+  validatePublishInput,
+  formatValidationErrors,
+  VALIDATION_ERROR_CODES,
+  type ValidationError,
+  type ValidationResult,
+  type ValidationErrorCode,
+} from './publish-validator.js';

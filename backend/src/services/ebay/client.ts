@@ -343,13 +343,14 @@ export class EbayApiClient {
     // eBay API error format
     if (errorObj.errors && Array.isArray(errorObj.errors)) {
       const firstError = errorObj.errors[0] as Record<string, unknown>;
+      const errorId = firstError.errorId != null ? String(firstError.errorId) : undefined;
       return {
         error: {
-          code: (firstError.errorId as string) || 'EBAY_ERROR',
+          code: errorId || 'EBAY_ERROR',
           message: (firstError.message as string) || 'eBay API error',
-          ebay_error_id: firstError.errorId as string,
+          ebay_error_id: errorId,
         },
-        recovery: this.getRecoveryAction(statusCode, firstError.errorId as string),
+        recovery: this.getRecoveryAction(statusCode, errorId || 'EBAY_ERROR'),
         request_id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
       };

@@ -261,6 +261,49 @@ export class EbayPolicyService {
   clearCache(userId: string): void {
     policyCache.delete(userId);
   }
+
+  /**
+   * Get default policies for a user
+   *
+   * Returns the first policy of each type for EBAY_US, or null if none exist.
+   * Used when publishing without explicitly specified policies.
+   */
+  async getDefaultPolicies(userId: string): Promise<{
+    fulfillment_policy_id: string | null;
+    payment_policy_id: string | null;
+    return_policy_id: string | null;
+  }> {
+    try {
+      const policies = await this.getUserPolicies(userId);
+
+      // Get first policy of each type (they're already filtered to EBAY_US)
+      const fulfillmentPolicy = policies.fulfillment[0];
+      const paymentPolicy = policies.payment[0];
+      const returnPolicy = policies.return[0];
+
+      const defaults = {
+        fulfillment_policy_id: fulfillmentPolicy?.policy_id || null,
+        payment_policy_id: paymentPolicy?.policy_id || null,
+        return_policy_id: returnPolicy?.policy_id || null,
+      };
+
+      console.log(
+        `[eBay Policy] Default policies for user ${userId}:`,
+        defaults.fulfillment_policy_id ? 'fulfillment OK' : 'fulfillment MISSING',
+        defaults.payment_policy_id ? 'payment OK' : 'payment MISSING',
+        defaults.return_policy_id ? 'return OK' : 'return MISSING'
+      );
+
+      return defaults;
+    } catch (error) {
+      console.error('[eBay Policy] Error fetching default policies:', error);
+      return {
+        fulfillment_policy_id: null,
+        payment_policy_id: null,
+        return_policy_id: null,
+      };
+    }
+  }
 }
 
 // =============================================================================

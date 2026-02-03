@@ -279,18 +279,40 @@ export const EbayOfferPayloadSchema = z.object({
 export type EbayOfferPayload = z.infer<typeof EbayOfferPayloadSchema>;
 
 /**
- * Single publish step status
+ * Single publish step status (6-step pipeline)
  */
 export const EbayPublishStepSchema = z.object({
-  step: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  name: z.enum(['inventory', 'offer', 'publish']),
-  status: z.enum(['pending', 'in_progress', 'complete', 'failed']),
+  step: z.number().int().min(1).max(6),
+  name: z.enum(['location', 'inventory', 'policies', 'offer', 'fees', 'publish']),
+  status: z.enum(['pending', 'in_progress', 'complete', 'failed', 'skipped']),
   item_sku: z.string().optional(),
   offer_id: z.string().optional(),
   listing_id: z.string().optional(),
+  merchant_location_key: z.string().optional(),
   error: z.string().optional(),
 });
 export type EbayPublishStep = z.infer<typeof EbayPublishStepSchema>;
+
+/**
+ * Listing fees from eBay (optional step)
+ */
+export const EbayListingFeesSchema = z.object({
+  marketplace_id: EbayMarketplaceEnum,
+  listing_fees: z.array(
+    z.object({
+      fee_type: z.string(),
+      amount: z.object({
+        value: z.string(),
+        currency: z.string(),
+      }),
+    })
+  ).optional(),
+  total_fee: z.object({
+    value: z.string(),
+    currency: z.string(),
+  }).optional(),
+});
+export type EbayListingFees = z.infer<typeof EbayListingFeesSchema>;
 
 /**
  * Result of publishing a listing
@@ -302,11 +324,13 @@ export const EbayPublishResultSchema = z.object({
   sku: z.string().optional(),
   listing_url: z.string().url().optional(),
   steps: z.array(EbayPublishStepSchema).optional(),
+  fees: EbayListingFeesSchema.optional(),
   error: z
     .object({
       code: z.string(),
       message: z.string(),
       action: z.string().optional(), // Suggested recovery action
+      ebay_error_id: z.coerce.string().optional(), // eBay's error ID for debugging
       details: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
@@ -318,6 +342,7 @@ export const EbayPublishResultSchema = z.object({
       })
     )
     .optional(),
+  traceId: z.string().uuid().optional(), // Pipeline trace ID for debugging
   published_at: z.string().datetime().optional(),
   attempted_at: z.string().datetime(),
 });
@@ -511,7 +536,7 @@ export const EbayApiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
-    ebay_error_id: z.string().optional(),
+    ebay_error_id: z.coerce.string().optional(),
   }),
   recovery: z
     .object({
