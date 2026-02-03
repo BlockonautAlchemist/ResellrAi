@@ -19,8 +19,10 @@ import { getEbayPolicyService } from './policy.js';
 import { getEbayLocationService } from './location.js';
 import { generateTraceId, createPublishLogger, type PublishLogger } from './publish-logger.js';
 import { validatePublishInput, formatValidationErrors } from './publish-validator.js';
+import { getContentLanguageHeader } from './header-utils.js';
 import {
   generateEbaySku,
+  EbayInventoryItemPayloadSchema,
   type EbayInventoryItemPayload,
   type EbayOfferPayload,
   type EbayPublishResult,
@@ -57,18 +59,26 @@ interface EbayErrorResponse {
 // =============================================================================
 
 const CONDITION_MAP: Record<string, string> = {
+  // From internal condition IDs to valid eBay enums
   new: 'NEW',
   like_new: 'LIKE_NEW',
-  very_good: 'VERY_GOOD',
-  good: 'GOOD',
-  fair: 'GOOD', // eBay doesn't have 'fair', map to good
-  poor: 'ACCEPTABLE',
-  // Direct mappings
+  very_good: 'USED_VERY_GOOD',
+  good: 'USED_GOOD',
+  fair: 'USED_GOOD', // eBay doesn't have 'fair', map to USED_GOOD
+  poor: 'USED_ACCEPTABLE',
+  // Direct eBay enum mappings (if already uppercase)
   NEW: 'NEW',
   LIKE_NEW: 'LIKE_NEW',
-  VERY_GOOD: 'VERY_GOOD',
-  GOOD: 'GOOD',
-  ACCEPTABLE: 'ACCEPTABLE',
+  USED_VERY_GOOD: 'USED_VERY_GOOD',
+  USED_GOOD: 'USED_GOOD',
+  USED_ACCEPTABLE: 'USED_ACCEPTABLE',
+  USED_EXCELLENT: 'USED_EXCELLENT',
+  NEW_OTHER: 'NEW_OTHER',
+  NEW_WITH_DEFECTS: 'NEW_WITH_DEFECTS',
+  SELLER_REFURBISHED: 'SELLER_REFURBISHED',
+  MANUFACTURER_REFURBISHED: 'MANUFACTURER_REFURBISHED',
+  CERTIFIED_REFURBISHED: 'CERTIFIED_REFURBISHED',
+  FOR_PARTS_OR_NOT_WORKING: 'FOR_PARTS_OR_NOT_WORKING',
 };
 
 // =============================================================================
@@ -410,33 +420,20 @@ export class EbayListingService {
     draft: EbayListingDraft
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Build inventory item payload
-      const payload: EbayInventoryItemPayload = {
-        sku,
-        locale: 'en_US',
-        product: {
-          title: draft.title,
-          description: draft.description,
-          imageUrls: draft.image_urls,
-          aspects: this.convertToAspects(draft.item_specifics),
-        },
-        condition: CONDITION_MAP[draft.condition.id] || 'GOOD',
-        conditionDescription: draft.condition.description,
-        availability: {
-          shipToLocationAvailability: {
-            quantity: draft.quantity,
-          },
-        },
-      };
+      // Validate and build payload
+      const validationResult = this.validateAndSanitizePayload(sku, draft);
+      if (!validationResult.valid) {
+        return { success: false, error: validationResult.error };
+      }
+      const payload = validationResult.payload;
 
       // PUT request to create/replace inventory item
+      // NOTE: locale goes in Content-Language header, NOT in body
       const response = await this.ebayClient.authenticatedRequest<void>(accessToken, {
         method: 'PUT',
         path: `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
         body: payload,
-        headers: {
-          'Content-Language': 'en-US',
-        },
+        headers: getContentLanguageHeader(),
       });
 
       // 204 No Content = success, 200 = success with body
@@ -521,9 +518,7 @@ export class EbayListingService {
           method: 'POST',
           path: '/sell/inventory/v1/offer',
           body: payload,
-          headers: {
-            'Content-Language': 'en-US',
-          },
+          headers: getContentLanguageHeader(),
         }
       );
 
@@ -642,32 +637,21 @@ export class EbayListingService {
     logger: PublishLogger
   ): Promise<{ success: boolean; error?: string; ebayErrorId?: string }> {
     try {
-      const payload: EbayInventoryItemPayload = {
-        sku,
-        locale: 'en_US',
-        product: {
-          title: draft.title,
-          description: draft.description,
-          imageUrls: draft.image_urls,
-          aspects: this.convertToAspects(draft.item_specifics),
-        },
-        condition: CONDITION_MAP[draft.condition.id] || 'GOOD',
-        conditionDescription: draft.condition.description,
-        availability: {
-          shipToLocationAvailability: {
-            quantity: draft.quantity,
-          },
-        },
-      };
+      // Validate and build payload using centralized helper
+      const validationResult = this.validateAndSanitizePayload(sku, draft);
+      if (!validationResult.valid) {
+        logger.logValidationError('payload', validationResult.error);
+        return { success: false, error: validationResult.error };
+      }
+      const payload = validationResult.payload;
 
       const path = `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`;
+      // NOTE: locale goes in Content-Language header, NOT in body
       const response = await this.ebayClient.authenticatedRequest<void>(accessToken, {
         method: 'PUT',
         path,
         body: payload,
-        headers: {
-          'Content-Language': 'en-US',
-        },
+        headers: getContentLanguageHeader(),
       });
 
       logger.logApiCall({
@@ -675,7 +659,7 @@ export class EbayListingService {
         method: 'PUT',
         path,
         statusCode: response.statusCode,
-        payloadKeys: ['sku', 'locale', 'product', 'condition', 'availability'],
+        payloadKeys: ['sku', 'product', 'condition', 'availability'],
         safeValues: { sku },
       });
 
@@ -754,9 +738,7 @@ export class EbayListingService {
           method: 'POST',
           path,
           body: payload,
-          headers: {
-            'Content-Language': 'en-US',
-          },
+          headers: getContentLanguageHeader(),
         }
       );
 
@@ -940,6 +922,62 @@ export class EbayListingService {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
+  }
+
+  /**
+   * Validate and sanitize inventory item payload before sending to eBay
+   * Ensures all fields match eBay's schema requirements
+   */
+  private validateAndSanitizePayload(
+    sku: string,
+    draft: EbayListingDraft
+  ): { valid: true; payload: EbayInventoryItemPayload } | { valid: false; error: string } {
+    // Ensure imageUrls is array with valid entries
+    const imageUrls = Array.isArray(draft.image_urls)
+      ? draft.image_urls.filter(url => typeof url === 'string' && url.length > 0)
+      : [];
+
+    if (imageUrls.length === 0) {
+      return { valid: false, error: 'At least one image URL is required' };
+    }
+
+    // Map condition to valid eBay enum
+    const conditionInput = draft.condition.id;
+    const condition = CONDITION_MAP[conditionInput] || CONDITION_MAP[conditionInput.toUpperCase()];
+    if (!condition) {
+      return { valid: false, error: `Invalid condition: ${conditionInput}` };
+    }
+
+    // Ensure quantity is a positive integer
+    const quantity = Math.max(0, Math.floor(Number(draft.quantity) || 1));
+
+    // Validate aspects are properly shaped
+    const aspects = this.convertToAspects(draft.item_specifics);
+
+    const payload: EbayInventoryItemPayload = {
+      sku,
+      // NOTE: locale is NOT included - it goes in Content-Language header only
+      product: {
+        title: draft.title.substring(0, 80),
+        description: draft.description.substring(0, 4000),
+        imageUrls,
+        aspects,
+      },
+      condition: condition as EbayInventoryItemPayload['condition'],
+      conditionDescription: draft.condition.description || undefined,
+      availability: {
+        shipToLocationAvailability: { quantity },
+      },
+    };
+
+    // Final validation with Zod schema
+    const result = EbayInventoryItemPayloadSchema.safeParse(payload);
+    if (!result.success) {
+      const errors = result.error.issues.map(i => i.message).join(', ');
+      return { valid: false, error: `Payload validation failed: ${errors}` };
+    }
+
+    return { valid: true, payload: result.data };
   }
 
   /**

@@ -35,9 +35,16 @@ export type EbayMarketplace = z.infer<typeof EbayMarketplaceEnum>;
 export const EbayConditionEnum = z.enum([
   'NEW',
   'LIKE_NEW',
-  'VERY_GOOD',
-  'GOOD',
-  'ACCEPTABLE',
+  'NEW_OTHER',
+  'NEW_WITH_DEFECTS',
+  'MANUFACTURER_REFURBISHED',
+  'CERTIFIED_REFURBISHED',
+  'SELLER_REFURBISHED',
+  'USED_EXCELLENT',
+  'USED_VERY_GOOD',
+  'USED_GOOD',
+  'USED_ACCEPTABLE',
+  'FOR_PARTS_OR_NOT_WORKING',
 ]);
 export type EbayCondition = z.infer<typeof EbayConditionEnum>;
 
@@ -237,14 +244,14 @@ export type EbayListingDraft = z.infer<typeof EbayListingDraftSchema>;
  */
 export const EbayInventoryItemPayloadSchema = z.object({
   sku: z.string().max(50),
-  locale: z.string().default('en_US'),
+  // NOTE: locale is NOT in the body - it goes in Content-Language header only
   product: z.object({
     title: z.string().max(80),
     description: z.string().max(4000),
     imageUrls: z.array(z.string().url()).min(1).max(12),
     aspects: z.record(z.string(), z.array(z.string())),
   }),
-  condition: z.string(),
+  condition: EbayConditionEnum,
   conditionDescription: z.string().optional(),
   availability: z.object({
     shipToLocationAvailability: z.object({

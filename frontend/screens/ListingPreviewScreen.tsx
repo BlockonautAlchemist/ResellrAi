@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import {
   regenerateField,
@@ -16,6 +17,17 @@ import {
   type GenerateListingResponse,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
+
+// Condition options with user-friendly labels
+const CONDITION_OPTIONS = [
+  { value: 'NEW', label: 'New' },
+  { value: 'LIKE_NEW', label: 'Like New' },
+  { value: 'USED_EXCELLENT', label: 'Used - Excellent' },
+  { value: 'USED_VERY_GOOD', label: 'Used - Very Good' },
+  { value: 'USED_GOOD', label: 'Used - Good' },
+  { value: 'USED_ACCEPTABLE', label: 'Used - Acceptable' },
+  { value: 'FOR_PARTS_OR_NOT_WORKING', label: 'For Parts / Not Working' },
+] as const;
 
 interface PreviewScreenProps {
   navigation: any;
@@ -47,6 +59,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         }
       : undefined
   );
+  const [selectedCondition, setSelectedCondition] = useState(
+    initialListing.listingDraft.condition?.value || 'USED_GOOD'
+  );
+  const [showConditionPicker, setShowConditionPicker] = useState(false);
+  const [isUpdatingCondition, setIsUpdatingCondition] = useState(false);
 
   const pricing = initialListing?.pricingSuggestion;
 
@@ -102,6 +119,29 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     }
   };
 
+  const handleConditionChange = async (conditionValue: string) => {
+    const previousCondition = selectedCondition;
+    setSelectedCondition(conditionValue);
+    setShowConditionPicker(false);
+    setIsUpdatingCondition(true);
+
+    try {
+      await updateListing(initialListing.itemId, {
+        condition: conditionValue,
+      });
+    } catch (err) {
+      // Revert on failure
+      setSelectedCondition(previousCondition);
+      Alert.alert('Error', 'Failed to update condition. Please try again.');
+    } finally {
+      setIsUpdatingCondition(false);
+    }
+  };
+
+  const getConditionLabel = (value: string) => {
+    return CONDITION_OPTIONS.find(opt => opt.value === value)?.label || value;
+  };
+
   const handleExport = () => {
     navigation.navigate('Export', {
       listing: {
@@ -114,6 +154,10 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             ...initialListing.listingDraft.category,
             platformCategoryId: selectedCategory?.categoryId || initialListing.listingDraft.category.platformCategoryId,
             value: selectedCategory?.categoryName || initialListing.listingDraft.category.value,
+          },
+          condition: {
+            ...initialListing.listingDraft.condition,
+            value: selectedCondition,
           },
         },
       },
@@ -280,15 +324,72 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         </View>
 
         {/* Condition */}
-        {initialListing.listingDraft.condition.requiresConfirmation && (
-          <View style={styles.warningBox}>
-            <Text style={styles.warningTitle}>Confirm Condition</Text>
-            <Text style={styles.warningText}>
-              AI detected condition as "{initialListing.listingDraft.condition.value}". 
-              Please verify this is accurate before listing.
-            </Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Condition</Text>
+            {isUpdatingCondition && (
+              <ActivityIndicator size="small" color="#007AFF" />
+            )}
           </View>
-        )}
+          <TouchableOpacity
+            style={styles.conditionSelector}
+            onPress={() => setShowConditionPicker(true)}
+            disabled={isUpdatingCondition}
+          >
+            <Text style={styles.conditionValue}>
+              {getConditionLabel(selectedCondition)}
+            </Text>
+            <Text style={styles.conditionChevron}>›</Text>
+          </TouchableOpacity>
+          {initialListing.listingDraft.condition?.requiresConfirmation && (
+            <Text style={styles.conditionHint}>
+              AI detected: {initialListing.listingDraft.condition.value}
+            </Text>
+          )}
+        </View>
+
+        {/* Condition Picker Modal */}
+        <Modal
+          visible={showConditionPicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowConditionPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Condition</Text>
+                <TouchableOpacity onPress={() => setShowConditionPicker(false)}>
+                  <Text style={styles.modalCancel}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.conditionList}>
+                {CONDITION_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.conditionOption,
+                      selectedCondition === option.value && styles.conditionOptionSelected,
+                    ]}
+                    onPress={() => handleConditionChange(option.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.conditionOptionText,
+                        selectedCondition === option.value && styles.conditionOptionTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {selectedCondition === option.value && (
+                      <Text style={styles.conditionCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         {/* Processing Time */}
         <Text style={styles.processingTime}>
@@ -460,25 +561,83 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
-  warningBox: {
-    backgroundColor: '#FFF3CD',
-    marginHorizontal: 16,
-    marginTop: 16,
+  conditionSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 14,
+    borderRadius: 8,
+  },
+  conditionValue: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  conditionChevron: {
+    fontSize: 20,
+    color: '#999',
+  },
+  conditionHint: {
+    fontSize: 12,
+    color: '#FF9500',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9500',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  warningTitle: {
-    fontSize: 14,
+  modalTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#856404',
-    marginBottom: 4,
+    color: '#333',
   },
-  warningText: {
-    fontSize: 13,
-    color: '#856404',
-    lineHeight: 18,
+  modalCancel: {
+    fontSize: 16,
+    color: '#007AFF',
+  },
+  conditionList: {
+    paddingBottom: 34,
+  },
+  conditionOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  conditionOptionSelected: {
+    backgroundColor: '#E3F2FF',
+  },
+  conditionOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  conditionOptionTextSelected: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  conditionCheck: {
+    fontSize: 18,
+    color: '#007AFF',
+    fontWeight: '600',
   },
   processingTime: {
     fontSize: 12,

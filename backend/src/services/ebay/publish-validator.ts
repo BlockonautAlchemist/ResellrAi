@@ -43,18 +43,26 @@ const CONSTRAINTS = {
 
 // Valid eBay condition IDs
 const VALID_CONDITIONS = new Set([
+  // Valid eBay condition enums
   'NEW',
   'LIKE_NEW',
-  'VERY_GOOD',
-  'GOOD',
-  'ACCEPTABLE',
+  'NEW_OTHER',
+  'NEW_WITH_DEFECTS',
+  'MANUFACTURER_REFURBISHED',
+  'CERTIFIED_REFURBISHED',
+  'SELLER_REFURBISHED',
+  'USED_EXCELLENT',
+  'USED_VERY_GOOD',
+  'USED_GOOD',
+  'USED_ACCEPTABLE',
+  'FOR_PARTS_OR_NOT_WORKING',
+  // Internal lowercase values (mapped later)
   'new',
   'like_new',
   'very_good',
   'good',
-  'acceptable',
-  'fair', // Maps to GOOD
-  'poor', // Maps to ACCEPTABLE
+  'fair',
+  'poor',
 ]);
 
 // =============================================================================
@@ -157,7 +165,7 @@ export function validatePublishInput(
     errors.push({
       code: VALIDATION_ERROR_CODES.INVALID_CONDITION,
       field: 'condition.id',
-      message: `Invalid condition: ${draft.condition.id}. Valid values: NEW, LIKE_NEW, VERY_GOOD, GOOD, ACCEPTABLE`,
+      message: `Invalid condition: ${draft.condition.id}. Valid values: NEW, LIKE_NEW, USED_EXCELLENT, USED_VERY_GOOD, USED_GOOD, USED_ACCEPTABLE, FOR_PARTS_OR_NOT_WORKING`,
       actual: draft.condition.id,
     });
   }

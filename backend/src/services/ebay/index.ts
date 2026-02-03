@@ -75,3 +75,13 @@ export {
   type ValidationResult,
   type ValidationErrorCode,
 } from './publish-validator.js';
+
+// Header utilities (fixes error 25709)
+export {
+  validateLanguageHeader,
+  sanitizeHeaders,
+  getContentLanguageHeader,
+  redactSensitiveHeaders,
+  logRequestHeaders,
+  DEFAULT_CONTENT_LANGUAGE,
+} from './header-utils.js';

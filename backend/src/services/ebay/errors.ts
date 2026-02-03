@@ -84,6 +84,7 @@ export const EBAY_ERROR_CODES = {
   EBAY_API_ERROR: 'EBAY_API_ERROR',
   NETWORK_ERROR: 'NETWORK_ERROR',
   TIMEOUT_ERROR: 'TIMEOUT_ERROR',
+  INVALID_HEADER: 'INVALID_HEADER',
 
   // Validation errors
   VALIDATION_ERROR: 'VALIDATION_ERROR',
@@ -166,6 +167,7 @@ export const EBAY_ERROR_MESSAGES: Record<EbayErrorCode, string> = {
   EBAY_API_ERROR: 'eBay service error',
   NETWORK_ERROR: 'Network connection error',
   TIMEOUT_ERROR: 'Request timed out',
+  INVALID_HEADER: 'Invalid HTTP header value',
 
   // Validation
   VALIDATION_ERROR: 'Invalid request data',
@@ -217,6 +219,7 @@ const RECOVERY_ACTIONS: Record<EbayErrorCode, EbayErrorRecoveryAction> = {
   PUBLISH_ERROR: 'retry',
   INTERNAL_ERROR: 'contact_support',
   UNKNOWN_ERROR: 'contact_support',
+  INVALID_HEADER: 'retry',
 
   // Location errors
   LOCATION_REQUIRED: 'none', // User must set up location
@@ -392,6 +395,9 @@ export function classifyEbayError(
     // Inventory/location errors
     '25003': 'LOCATION_REQUIRED', // merchantLocationKey missing
 
+    // Header validation errors
+    '25709': 'INVALID_HEADER', // Invalid value for header Accept-Language
+
     // Duplicate listing
     '21916012': 'DUPLICATE_LISTING',
 
@@ -529,6 +535,7 @@ export const EBAY_ERROR_ID_MAPPINGS: Record<string, { code: EbayErrorCode; actio
   '21916013': { code: 'SELLING_LIMIT_EXCEEDED', action: 'contact_support' },
   '21916014': { code: 'CATEGORY_RESTRICTED', action: 'none' },
   '21916289': { code: 'POLICIES_MISSING', action: 'none' },
+  '25709': { code: 'INVALID_HEADER', action: 'retry' }, // Invalid Accept-Language header
 };
 
 /**

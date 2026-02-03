@@ -17,6 +17,10 @@ import {
   EbayApiErrorSchema,
   type EbayApiError,
 } from '../../types/ebay-schemas.js';
+import {
+  sanitizeHeaders,
+  redactSensitiveHeaders,
+} from './header-utils.js';
 
 // =============================================================================
 // TYPES
@@ -178,14 +182,24 @@ export class EbayApiClient {
 
     const url = `${this.urls.api}${path}`;
 
+    // Sanitize custom headers (removes Accept-Language, validates Content-Language)
+    const sanitizedCustomHeaders = sanitizeHeaders(headers);
+
     // Build headers
     const requestHeaders: Record<string, string> = {
       Accept: 'application/json',
-      ...headers,
+      ...sanitizedCustomHeaders,
     };
 
     if (accessToken) {
       requestHeaders['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    // Debug logging for inventory API calls (helps diagnose header issues like 25709)
+    if (path.includes('/sell/inventory/')) {
+      const redacted = redactSensitiveHeaders(requestHeaders);
+      console.log(`[eBay API] ${method} ${path}`);
+      console.log(`Headers: ${JSON.stringify(redacted)}`);
     }
 
     // Prepare body
