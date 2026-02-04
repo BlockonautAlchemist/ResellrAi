@@ -28,6 +28,9 @@ export {
   type CategorySuggestionsResult,
 } from './taxonomy.js';
 
+// Metadata service (category-specific conditions)
+export { EbayMetadataService, getEbayMetadataService } from './metadata.js';
+
 // API client
 export { EbayApiClient, getEbayClient, isEbayAvailable, type EbayTokenResponse } from './client.js';
 
@@ -70,10 +73,12 @@ export {
 export {
   validatePublishInput,
   formatValidationErrors,
+  validateConditionForCategory,
   VALIDATION_ERROR_CODES,
   type ValidationError,
   type ValidationResult,
   type ValidationErrorCode,
+  type ConditionValidationResult,
 } from './publish-validator.js';
 
 // Header utilities (fixes error 25709)

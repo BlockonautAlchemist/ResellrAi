@@ -14,20 +14,23 @@ import {
 import {
   regenerateField,
   updateListing,
+  getCategoryConditions,
   type GenerateListingResponse,
+  type CategoryCondition,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
+import { TEMP_USER_ID } from '../lib/constants';
 
-// Condition options with user-friendly labels
-const CONDITION_OPTIONS = [
-  { value: 'NEW', label: 'New' },
-  { value: 'LIKE_NEW', label: 'Like New' },
-  { value: 'USED_EXCELLENT', label: 'Used - Excellent' },
-  { value: 'USED_VERY_GOOD', label: 'Used - Very Good' },
-  { value: 'USED_GOOD', label: 'Used - Good' },
-  { value: 'USED_ACCEPTABLE', label: 'Used - Acceptable' },
-  { value: 'FOR_PARTS_OR_NOT_WORKING', label: 'For Parts / Not Working' },
-] as const;
+// Default condition options (used before category is selected or if API fails)
+const DEFAULT_CONDITION_OPTIONS: CategoryCondition[] = [
+  { id: '1000', label: 'New', apiEnum: 'NEW' },
+  { id: '2750', label: 'Like New', apiEnum: 'LIKE_NEW' },
+  { id: '3000', label: 'Used - Excellent', apiEnum: 'USED_EXCELLENT' },
+  { id: '4000', label: 'Used - Very Good', apiEnum: 'USED_VERY_GOOD' },
+  { id: '5000', label: 'Used - Good', apiEnum: 'USED_GOOD' },
+  { id: '6000', label: 'Used - Acceptable', apiEnum: 'USED_ACCEPTABLE' },
+  { id: '7000', label: 'For Parts / Not Working', apiEnum: 'FOR_PARTS_OR_NOT_WORKING' },
+];
 
 interface PreviewScreenProps {
   navigation: any;
@@ -64,6 +67,9 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   );
   const [showConditionPicker, setShowConditionPicker] = useState(false);
   const [isUpdatingCondition, setIsUpdatingCondition] = useState(false);
+  const [availableConditions, setAvailableConditions] = useState<CategoryCondition[]>(DEFAULT_CONDITION_OPTIONS);
+  const [isLoadingConditions, setIsLoadingConditions] = useState(false);
+  const [conditionsError, setConditionsError] = useState<string | null>(null);
 
   const pricing = initialListing?.pricingSuggestion;
 
@@ -92,6 +98,74 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       setSelectedPrice(selectedPriceFromComps);
     }
   }, [selectedPriceFromComps]);
+
+  // Fetch valid conditions when category changes
+  useEffect(() => {
+    if (!selectedCategory?.categoryId) {
+      // No category selected - use default conditions
+      setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
+      setConditionsError(null);
+      return;
+    }
+
+    // Capture values for use in async function
+    const categoryId = selectedCategory.categoryId;
+    const itemId = initialListing?.itemId;
+    let isCancelled = false;
+
+    async function fetchConditions() {
+      setIsLoadingConditions(true);
+      setConditionsError(null);
+
+      try {
+        const result = await getCategoryConditions(categoryId, TEMP_USER_ID);
+
+        if (isCancelled) return;
+
+        if (result.conditions.length > 0) {
+          setAvailableConditions(result.conditions);
+
+          // Check if current condition is still valid
+          const currentConditionValid = result.conditions.some(
+            (c) => c.apiEnum === selectedCondition || c.id === selectedCondition
+          );
+
+          if (!currentConditionValid && result.conditions.length > 0) {
+            // Auto-select first valid condition
+            const newCondition = result.conditions[0].apiEnum;
+            setSelectedCondition(newCondition);
+            // Persist the change
+            if (itemId) {
+              try {
+                await updateListing(itemId, { condition: newCondition });
+              } catch (err) {
+                console.warn('[ListingPreview] Failed to update condition:', err);
+              }
+            }
+          }
+        } else {
+          // No conditions from API - use defaults
+          setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
+        }
+      } catch (err) {
+        console.error('[ListingPreview] Error fetching conditions:', err);
+        if (!isCancelled) {
+          setConditionsError('Could not load conditions for this category');
+          setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingConditions(false);
+        }
+      }
+    }
+
+    fetchConditions();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedCategory?.categoryId]);
 
   const handleViewComps = () => {
     navigation.navigate('Comps', {
@@ -139,7 +213,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   };
 
   const getConditionLabel = (value: string) => {
-    return CONDITION_OPTIONS.find(opt => opt.value === value)?.label || value;
+    // Find in available conditions by apiEnum or id
+    const found = availableConditions.find(
+      (opt) => opt.apiEnum === value || opt.id === value
+    );
+    return found?.label || value;
   };
 
   const handleExport = () => {
@@ -327,21 +405,34 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Condition</Text>
-            {isUpdatingCondition && (
+            {(isUpdatingCondition || isLoadingConditions) && (
               <ActivityIndicator size="small" color="#007AFF" />
             )}
           </View>
           <TouchableOpacity
-            style={styles.conditionSelector}
+            style={[
+              styles.conditionSelector,
+              !selectedCategory?.categoryId && styles.conditionSelectorDisabled,
+            ]}
             onPress={() => setShowConditionPicker(true)}
-            disabled={isUpdatingCondition}
+            disabled={isUpdatingCondition || isLoadingConditions}
           >
-            <Text style={styles.conditionValue}>
+            <Text
+              style={[
+                styles.conditionValue,
+                !selectedCategory?.categoryId && styles.conditionValueDisabled,
+              ]}
+            >
               {getConditionLabel(selectedCondition)}
             </Text>
             <Text style={styles.conditionChevron}>›</Text>
           </TouchableOpacity>
-          {initialListing.listingDraft.condition?.requiresConfirmation && (
+          {!selectedCategory?.categoryId && (
+            <Text style={styles.conditionHint}>
+              Select a category to see valid conditions
+            </Text>
+          )}
+          {initialListing.listingDraft.condition?.requiresConfirmation && selectedCategory?.categoryId && (
             <Text style={styles.conditionHint}>
               AI detected: {initialListing.listingDraft.condition.value}
             </Text>
@@ -363,30 +454,57 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
                   <Text style={styles.modalCancel}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.conditionList}>
-                {CONDITION_OPTIONS.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.conditionOption,
-                      selectedCondition === option.value && styles.conditionOptionSelected,
-                    ]}
-                    onPress={() => handleConditionChange(option.value)}
-                  >
-                    <Text
+              {isLoadingConditions ? (
+                <View style={styles.conditionLoading}>
+                  <ActivityIndicator size="large" color="#007AFF" />
+                  <Text style={styles.conditionLoadingText}>Loading conditions...</Text>
+                </View>
+              ) : !selectedCategory?.categoryId ? (
+                <View style={styles.conditionLoading}>
+                  <Text style={styles.conditionLoadingText}>
+                    Select a category first to see valid conditions
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.conditionList}>
+                  {conditionsError && (
+                    <View style={styles.conditionErrorBanner}>
+                      <Text style={styles.conditionErrorText}>{conditionsError}</Text>
+                    </View>
+                  )}
+                  {availableConditions.map((option) => (
+                    <TouchableOpacity
+                      key={option.id || option.apiEnum}
                       style={[
-                        styles.conditionOptionText,
-                        selectedCondition === option.value && styles.conditionOptionTextSelected,
+                        styles.conditionOption,
+                        (selectedCondition === option.apiEnum || selectedCondition === option.id) &&
+                          styles.conditionOptionSelected,
                       ]}
+                      onPress={() => handleConditionChange(option.apiEnum)}
                     >
-                      {option.label}
-                    </Text>
-                    {selectedCondition === option.value && (
-                      <Text style={styles.conditionCheck}>✓</Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                      <View style={styles.conditionOptionContent}>
+                        <Text
+                          style={[
+                            styles.conditionOptionText,
+                            (selectedCondition === option.apiEnum || selectedCondition === option.id) &&
+                              styles.conditionOptionTextSelected,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                        {option.description && (
+                          <Text style={styles.conditionOptionDescription}>
+                            {option.description}
+                          </Text>
+                        )}
+                      </View>
+                      {(selectedCondition === option.apiEnum || selectedCondition === option.id) && (
+                        <Text style={styles.conditionCheck}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
         </Modal>
@@ -569,10 +687,16 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 8,
   },
+  conditionSelectorDisabled: {
+    opacity: 0.6,
+  },
   conditionValue: {
     fontSize: 16,
     color: '#333',
     fontWeight: '500',
+  },
+  conditionValueDisabled: {
+    color: '#999',
   },
   conditionChevron: {
     fontSize: 20,
@@ -638,6 +762,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#007AFF',
     fontWeight: '600',
+  },
+  conditionOptionContent: {
+    flex: 1,
+  },
+  conditionOptionDescription: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  conditionLoading: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  conditionLoadingText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  conditionErrorBanner: {
+    backgroundColor: '#FFF3CD',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 8,
+  },
+  conditionErrorText: {
+    fontSize: 13,
+    color: '#856404',
   },
   processingTime: {
     fontSize: 12,

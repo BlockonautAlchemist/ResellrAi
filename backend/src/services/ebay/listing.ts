@@ -18,7 +18,7 @@ import { getEbayAuthService } from './auth.js';
 import { getEbayPolicyService } from './policy.js';
 import { getEbayLocationService } from './location.js';
 import { generateTraceId, createPublishLogger, type PublishLogger } from './publish-logger.js';
-import { validatePublishInput, formatValidationErrors } from './publish-validator.js';
+import { validatePublishInput, formatValidationErrors, validateConditionForCategory } from './publish-validator.js';
 import { getContentLanguageHeader } from './header-utils.js';
 import {
   generateEbaySku,
@@ -204,6 +204,34 @@ export class EbayListingService {
 
       // Get access token
       const accessToken = await this.authService.getAccessToken(userId);
+
+      // ===== STEP 0.5: Validate condition for category =====
+      // This catches eBay error 25059 before we make any API calls
+      if (draft.category_id && draft.condition?.id) {
+        logger.logInfo('Validating condition for category', {
+          categoryId: draft.category_id,
+          conditionId: draft.condition.id,
+        });
+        const conditionValidation = await validateConditionForCategory(
+          draft.category_id,
+          draft.condition.id,
+          accessToken
+        );
+        if (!conditionValidation.valid && conditionValidation.error) {
+          logger.logValidationError(
+            conditionValidation.error.field,
+            conditionValidation.error.message
+          );
+          const validOptions = conditionValidation.validConditions
+            ?.map((c) => `${c.label} (${c.apiEnum})`)
+            .join(', ');
+          return errorResult(
+            'VALIDATION_CONDITION_INVALID_FOR_CATEGORY',
+            `${conditionValidation.error.message}${validOptions ? `. Valid options: ${validOptions}` : ''}`,
+            'check_details'
+          );
+        }
+      }
 
       // ===== STEP 1: Location =====
       logger.logStepStart('location');

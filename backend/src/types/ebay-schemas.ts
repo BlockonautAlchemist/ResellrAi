@@ -760,3 +760,37 @@ export function getCompsSourceMessage(
 ): string {
   return COMPS_SOURCE_MESSAGES[source](sampleSize);
 }
+
+// =============================================================================
+// ITEM CONDITION SCHEMAS (Metadata API)
+// =============================================================================
+
+/**
+ * Item condition from eBay Metadata API
+ */
+export interface EbayItemCondition {
+  conditionId: string;        // "1000", "3000", etc.
+  conditionDescription: string;  // "New", "Used", etc.
+  conditionHelpText?: string;
+}
+
+/**
+ * Normalized condition for frontend consumption
+ */
+export interface NormalizedItemCondition {
+  id: string;           // Numeric ID ("1000", "3000", etc.)
+  label: string;        // Human-readable ("New", "Used - Good", etc.)
+  description?: string; // Help text for the condition
+  apiEnum: string;      // eBay API enum (NEW, USED_GOOD, etc.)
+}
+
+/**
+ * Result from fetching category conditions
+ */
+export interface CategoryConditionsResult {
+  categoryId: string;
+  conditionRequired: boolean;
+  conditions: NormalizedItemCondition[];
+  cached: boolean;
+  cacheAge?: number;  // Seconds since cached
+}

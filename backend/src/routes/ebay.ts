@@ -22,6 +22,7 @@ import {
   getEbayListingService,
   getEbayLocationService,
   getEbayTaxonomyService,
+  getEbayMetadataService,
   isEbayAvailable,
   createErrorResponse,
   EBAY_ERROR_CODES,
@@ -629,6 +630,91 @@ router.get('/categories/suggest', async (req: Request, res: Response) => {
       error: {
         code: 'CATEGORY_SUGGEST_FAILED',
         message: error instanceof Error ? error.message : 'Failed to get category suggestions',
+      },
+    });
+  }
+});
+
+// =============================================================================
+// CATEGORY CONDITIONS ROUTES
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/categories/:categoryId/conditions
+ * Get valid conditions for a specific eBay category
+ *
+ * Requires connected eBay account (user access token needed for Metadata API).
+ *
+ * Path params:
+ * - categoryId: eBay category ID
+ *
+ * Query params:
+ * - user_id: User ID (required)
+ * - marketplace: eBay marketplace ID (default: EBAY_US)
+ *
+ * Response:
+ * - categoryId: string
+ * - conditionRequired: boolean
+ * - conditions: Array of { id, label, description, apiEnum }
+ * - cached: boolean
+ * - cacheAge?: number (seconds since cached)
+ *
+ * Returns 401 if not connected, 500 if API fails (empty conditions array on failure).
+ */
+router.get('/categories/:categoryId/conditions', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
+    const { categoryId } = req.params;
+    const marketplace = (req.query.marketplace as string) || 'EBAY_US';
+
+    if (!categoryId || categoryId.trim().length === 0) {
+      res.status(400).json({
+        error: {
+          code: 'CATEGORY_ID_REQUIRED',
+          message: 'Category ID is required',
+        },
+      });
+      return;
+    }
+
+    // Resolve user's access token
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessToken(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account to get category conditions',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
+    // Fetch conditions from Metadata API
+    const metadataService = getEbayMetadataService();
+    const result = await metadataService.getItemConditionPolicies(categoryId, marketplace, accessToken);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[eBay Routes] Category conditions error:', error);
+    res.status(500).json({
+      error: {
+        code: 'CONDITIONS_FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get category conditions',
       },
     });
   }

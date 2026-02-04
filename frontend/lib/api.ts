@@ -641,6 +641,70 @@ export async function suggestCategory(
 }
 
 // =============================================================================
+// Category Conditions API
+// =============================================================================
+
+/**
+ * Normalized condition option for a category
+ */
+export interface CategoryCondition {
+  id: string;           // Numeric ID ("1000", "3000", etc.)
+  label: string;        // Human-readable ("New", "Used - Good", etc.)
+  description?: string; // Help text for the condition
+  apiEnum: string;      // eBay API enum (NEW, USED_GOOD, etc.)
+}
+
+/**
+ * Result from fetching category conditions
+ */
+export interface CategoryConditionsResult {
+  categoryId: string;
+  conditionRequired: boolean;
+  conditions: CategoryCondition[];
+  cached: boolean;
+  cacheAge?: number;
+}
+
+/**
+ * Get valid conditions for a specific eBay category
+ *
+ * @param categoryId - eBay category ID
+ * @param userId - User ID (required for eBay API access)
+ * @param marketplace - Marketplace ID (default: EBAY_US)
+ */
+export async function getCategoryConditions(
+  categoryId: string,
+  userId: string,
+  marketplace: string = 'EBAY_US'
+): Promise<CategoryConditionsResult> {
+  const apiUrl = getApiUrlOrThrow();
+  const params = new URLSearchParams();
+  params.set('user_id', userId);
+  params.set('marketplace', marketplace);
+
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/categories/${encodeURIComponent(categoryId)}/conditions?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    // Return empty conditions on failure (let eBay validate)
+    if (response.status === 401) {
+      throw new Error(error.message || 'Please connect your eBay account');
+    }
+    console.warn('[API] getCategoryConditions failed:', error);
+    return {
+      categoryId,
+      conditionRequired: false,
+      conditions: [],
+      cached: false,
+    };
+  }
+
+  return response.json();
+}
+
+// =============================================================================
 // Seller Location Profile API
 // =============================================================================
 

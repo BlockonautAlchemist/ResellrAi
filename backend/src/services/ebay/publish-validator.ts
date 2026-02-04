@@ -5,7 +5,8 @@
  * Validates all required fields to fail fast with clear error messages.
  */
 
-import type { EbayListingDraft } from '../../types/ebay-schemas.js';
+import type { EbayListingDraft, NormalizedItemCondition } from '../../types/ebay-schemas.js';
+import { getEbayMetadataService } from './metadata.js';
 
 // =============================================================================
 // VALIDATION ERROR CODES
@@ -19,6 +20,7 @@ export const VALIDATION_ERROR_CODES = {
   NO_IMAGES: 'VALIDATION_NO_IMAGES',
   TOO_MANY_IMAGES: 'VALIDATION_TOO_MANY_IMAGES',
   INVALID_CONDITION: 'VALIDATION_INVALID_CONDITION',
+  CONDITION_INVALID_FOR_CATEGORY: 'VALIDATION_CONDITION_INVALID_FOR_CATEGORY',
   CATEGORY_REQUIRED: 'VALIDATION_CATEGORY_REQUIRED',
   INVALID_PRICE: 'VALIDATION_INVALID_PRICE',
   INVALID_QUANTITY: 'VALIDATION_INVALID_QUANTITY',
@@ -254,4 +256,66 @@ export function formatValidationErrors(errors: ValidationError[]): {
       : `Validation failed: ${errors.length} errors`,
     details: errors,
   };
+}
+
+// =============================================================================
+// ASYNC VALIDATION (requires API calls)
+// =============================================================================
+
+/**
+ * Result of async condition validation
+ */
+export interface ConditionValidationResult {
+  valid: boolean;
+  error?: ValidationError;
+  validConditions?: NormalizedItemCondition[];
+}
+
+/**
+ * Validate that a condition is valid for a given category
+ *
+ * This is an async validation that calls the eBay Metadata API.
+ * It should be called before publishing to catch error 25059.
+ *
+ * @param categoryId - eBay category ID
+ * @param conditionId - Condition ID (numeric string or enum)
+ * @param accessToken - User's eBay access token
+ * @param marketplace - Marketplace ID (default: EBAY_US)
+ */
+export async function validateConditionForCategory(
+  categoryId: string,
+  conditionId: string,
+  accessToken: string,
+  marketplace: string = 'EBAY_US'
+): Promise<ConditionValidationResult> {
+  try {
+    const metadataService = getEbayMetadataService();
+    const result = await metadataService.validateCondition(
+      categoryId,
+      conditionId,
+      accessToken,
+      marketplace
+    );
+
+    if (result.valid) {
+      return { valid: true };
+    }
+
+    // Build validation error with valid options
+    const validOptions = result.validConditions?.map((c) => c.label).join(', ') || 'unknown';
+    return {
+      valid: false,
+      error: {
+        code: VALIDATION_ERROR_CODES.CONDITION_INVALID_FOR_CATEGORY,
+        field: 'condition.id',
+        message: `Condition "${conditionId}" is not valid for this category. Valid options: ${validOptions}`,
+        actual: conditionId,
+      },
+      validConditions: result.validConditions,
+    };
+  } catch (error) {
+    // On API error, let eBay validate (don't block publishing)
+    console.warn('[Publish Validator] Condition validation failed, allowing eBay to validate:', error);
+    return { valid: true };
+  }
 }
