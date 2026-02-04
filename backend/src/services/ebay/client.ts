@@ -185,7 +185,8 @@ export class EbayApiClient {
     // Sanitize custom headers (removes Accept-Language, validates Content-Language)
     const sanitizedCustomHeaders = sanitizeHeaders(headers);
 
-    // Build headers
+    // Build headers - explicitly exclude Accept-Language as eBay Sell Inventory API
+    // rejects it with error 25709 (even valid values like "en-US" may be rejected)
     const requestHeaders: Record<string, string> = {
       Accept: 'application/json',
       ...sanitizedCustomHeaders,
@@ -193,13 +194,6 @@ export class EbayApiClient {
 
     if (accessToken) {
       requestHeaders['Authorization'] = `Bearer ${accessToken}`;
-    }
-
-    // Debug logging for inventory API calls (helps diagnose header issues like 25709)
-    if (path.includes('/sell/inventory/')) {
-      const redacted = redactSensitiveHeaders(requestHeaders);
-      console.log(`[eBay API] ${method} ${path}`);
-      console.log(`Headers: ${JSON.stringify(redacted)}`);
     }
 
     // Prepare body
@@ -215,6 +209,27 @@ export class EbayApiClient {
       }
     }
 
+    // Right before fetch, enforce eBay Inventory API header requirements
+    if (path.includes('/sell/inventory/')) {
+      // Remove any existing Accept-Language variants first (case-insensitive cleanup)
+      for (const key of Object.keys(requestHeaders)) {
+        if (key.trim().toLowerCase() === 'accept-language') {
+          delete requestHeaders[key];
+        }
+      }
+      // Force-set required headers with exact values (no q-values, exact dash format)
+      requestHeaders['Accept-Language'] = 'en-US';
+      requestHeaders['Content-Language'] = 'en-US';
+      if (requestBody) {
+        requestHeaders['Content-Type'] = 'application/json';
+      }
+
+      // Debug logging
+      const redacted = redactSensitiveHeaders(requestHeaders);
+      console.log(`[eBay API DEBUG] ${method} ${path}`);
+      console.log(`[eBay API DEBUG] Final headers: ${JSON.stringify(redacted)}`);
+    }
+
     // Execute with retries
     let lastError: Error | null = null;
     let lastResponse: EbayApiResponse<T> | null = null;
@@ -224,12 +239,20 @@ export class EbayApiClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        const response = await fetch(url, {
+        // Create Request object to inspect actual wire-level headers
+        const req = new Request(url, {
           method,
           headers: requestHeaders,
           body: requestBody,
           signal: controller.signal,
         });
+
+        // Log what fetch will actually send (wire-level headers)
+        if (path.includes('/sell/inventory/')) {
+          console.log('[WIRE] Headers to be sent:', [...req.headers.entries()]);
+        }
+
+        const response = await fetch(req);
 
         clearTimeout(timeoutId);
 
@@ -261,12 +284,16 @@ export class EbayApiClient {
           if (response.ok) {
             data = json as T;
           } else {
+            // Log raw response body for non-2xx to see nested errors[]
+            console.log(`[eBay API ERROR] Status ${response.status} raw body:`, JSON.stringify(json, null, 2));
             error = this.parseEbayError(json, response.status);
           }
         } else {
           // Non-JSON response
           if (!response.ok) {
             const text = await response.text();
+            // Log raw response body for non-2xx
+            console.log(`[eBay API ERROR] Status ${response.status} raw body (non-JSON):`, text.slice(0, 2000));
             error = {
               error: {
                 code: `HTTP_${response.status}`,

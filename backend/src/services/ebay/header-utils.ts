@@ -86,13 +86,12 @@ export function sanitizeHeaders(
   const sanitized: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(headers)) {
-    const lowerKey = key.toLowerCase();
+    const lowerKey = key.trim().toLowerCase();
 
-    // Remove Accept-Language - eBay Sell Inventory API does not support it
-    // and may cause error 25709 if an invalid value is injected
+    // Skip Accept-Language entirely - eBay Inventory API rejects it with error 25709
     if (lowerKey === 'accept-language') {
       console.warn(
-        `[eBay API] Removing Accept-Language header (not supported by Inventory API): "${value}"`
+        `[eBay API] Removing Accept-Language header - not supported by Sell Inventory API`
       );
       continue;
     }
