@@ -7,6 +7,8 @@
 
 import type { EbayListingDraft, NormalizedItemCondition } from '../../types/ebay-schemas.js';
 import { getEbayMetadataService } from './metadata.js';
+import { getEbayAspectsService } from './aspects.js';
+import { validateItemSpecifics as validateAspects } from './aspects-suggester.js';
 
 // =============================================================================
 // VALIDATION ERROR CODES
@@ -26,6 +28,8 @@ export const VALIDATION_ERROR_CODES = {
   INVALID_QUANTITY: 'VALIDATION_INVALID_QUANTITY',
   POLICIES_INCOMPLETE: 'VALIDATION_POLICIES_INCOMPLETE',
   LOCATION_REQUIRED: 'VALIDATION_LOCATION_REQUIRED',
+  MISSING_ITEM_SPECIFICS: 'VALIDATION_MISSING_ITEM_SPECIFICS',
+  INVALID_ITEM_SPECIFIC_VALUE: 'VALIDATION_INVALID_ITEM_SPECIFIC_VALUE',
 } as const;
 
 export type ValidationErrorCode = typeof VALIDATION_ERROR_CODES[keyof typeof VALIDATION_ERROR_CODES];
@@ -317,5 +321,76 @@ export async function validateConditionForCategory(
     // On API error, let eBay validate (don't block publishing)
     console.warn('[Publish Validator] Condition validation failed, allowing eBay to validate:', error);
     return { valid: true };
+  }
+}
+
+// =============================================================================
+// ITEM SPECIFICS VALIDATION
+// =============================================================================
+
+/**
+ * Result of async item specifics validation
+ */
+export interface ItemSpecificsValidationResult {
+  valid: boolean;
+  missing: string[];
+  invalid: Array<{ aspect: string; value: string; allowed: string[] }>;
+}
+
+/**
+ * Validate that all required item specifics are present and valid for a category
+ *
+ * This is an async validation that calls the eBay Taxonomy API.
+ * It should be called before publishing to catch error 25002 (missing item specifics).
+ *
+ * @param categoryId - eBay category ID
+ * @param itemSpecifics - Item specifics from the listing
+ * @param accessToken - User's eBay access token
+ * @param marketplace - Marketplace ID (default: EBAY_US)
+ */
+export async function validateItemSpecificsForCategory(
+  categoryId: string,
+  itemSpecifics: Record<string, string>,
+  accessToken: string,
+  marketplace: string = 'EBAY_US'
+): Promise<ItemSpecificsValidationResult> {
+  try {
+    console.log(`[Publish Validator] Validating item specifics for category ${categoryId}`);
+    console.log(`[Publish Validator] Provided item specifics: ${Object.keys(itemSpecifics).join(', ') || 'none'}`);
+
+    // Fetch aspects metadata for the category
+    const aspectsService = getEbayAspectsService();
+    const aspectsMetadata = await aspectsService.getItemAspectsForCategory(
+      categoryId,
+      marketplace,
+      accessToken
+    );
+
+    // If no required aspects, validation passes
+    if (aspectsMetadata.requiredAspects.length === 0) {
+      console.log('[Publish Validator] No required aspects for category, validation passes');
+      return { valid: true, missing: [], invalid: [] };
+    }
+
+    // Validate the item specifics against the aspects metadata
+    const validationResult = validateAspects(itemSpecifics, aspectsMetadata);
+
+    if (!validationResult.valid) {
+      console.log(`[Publish Validator] Item specifics validation failed:`);
+      if (validationResult.missing.length > 0) {
+        console.log(`  - Missing required: ${validationResult.missing.join(', ')}`);
+      }
+      if (validationResult.invalid.length > 0) {
+        console.log(`  - Invalid values: ${validationResult.invalid.map(i => `${i.aspect}="${i.value}"`).join(', ')}`);
+      }
+    } else {
+      console.log('[Publish Validator] Item specifics validation passed');
+    }
+
+    return validationResult;
+  } catch (error) {
+    // On API error, let eBay validate (don't block publishing)
+    console.warn('[Publish Validator] Item specifics validation failed, allowing eBay to validate:', error);
+    return { valid: true, missing: [], invalid: [] };
   }
 }

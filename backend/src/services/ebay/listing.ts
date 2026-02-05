@@ -18,7 +18,7 @@ import { getEbayAuthService } from './auth.js';
 import { getEbayPolicyService } from './policy.js';
 import { getEbayLocationService } from './location.js';
 import { generateTraceId, createPublishLogger, type PublishLogger } from './publish-logger.js';
-import { validatePublishInput, formatValidationErrors, validateConditionForCategory } from './publish-validator.js';
+import { validatePublishInput, formatValidationErrors, validateConditionForCategory, validateItemSpecificsForCategory } from './publish-validator.js';
 import { getContentLanguageHeader } from './header-utils.js';
 import {
   generateEbaySku,
@@ -164,7 +164,7 @@ export class EbayListingService {
       code: string,
       message: string,
       action: string,
-      partial?: { offerId?: string; sku?: string; ebayErrorId?: string }
+      partial?: { offerId?: string; sku?: string; ebayErrorId?: string; missing?: string[]; invalid?: Array<{ aspect: string; value: string; allowed: string[] }> }
     ): EbayPublishResult => ({
       success: false,
       offer_id: partial?.offerId,
@@ -175,6 +175,7 @@ export class EbayListingService {
         message,
         action,
         ...(partial?.ebayErrorId && { ebay_error_id: partial.ebayErrorId }),
+        ...(partial?.missing || partial?.invalid ? { details: { missing: partial.missing, invalid: partial.invalid } } : {}),
       },
       traceId,
       attempted_at: attemptedAt,
@@ -230,6 +231,52 @@ export class EbayListingService {
             `${conditionValidation.error.message}${validOptions ? `. Valid options: ${validOptions}` : ''}`,
             'check_details'
           );
+        }
+      }
+
+      // ===== STEP 0.6: Validate item specifics for category =====
+      // This catches eBay error 25002 (missing item specifics like Department) before we make API calls
+      if (draft.category_id) {
+        logger.logInfo('Validating item specifics for category', {
+          categoryId: draft.category_id,
+          itemSpecificsCount: String(Object.keys(draft.item_specifics || {}).length),
+        });
+        const itemSpecificsValidation = await validateItemSpecificsForCategory(
+          draft.category_id,
+          draft.item_specifics || {},
+          accessToken
+        );
+
+        if (!itemSpecificsValidation.valid) {
+          const missingList = itemSpecificsValidation.missing;
+          const invalidList = itemSpecificsValidation.invalid;
+
+          if (missingList.length > 0) {
+            logger.logValidationError(
+              'item_specifics',
+              `Missing required item specifics: ${missingList.join(', ')}`
+            );
+            return errorResult(
+              'MISSING_ITEM_SPECIFICS',
+              `Required item specifics missing: ${missingList.join(', ')}`,
+              'edit_item_specifics',
+              { missing: missingList, invalid: invalidList }
+            );
+          }
+
+          if (invalidList.length > 0) {
+            const firstInvalid = invalidList[0];
+            logger.logValidationError(
+              'item_specifics',
+              `Invalid value for ${firstInvalid.aspect}: "${firstInvalid.value}"`
+            );
+            return errorResult(
+              'INVALID_ITEM_SPECIFIC_VALUE',
+              `Invalid value for ${firstInvalid.aspect}: "${firstInvalid.value}". Allowed: ${firstInvalid.allowed.slice(0, 10).join(', ')}${firstInvalid.allowed.length > 10 ? '...' : ''}`,
+              'edit_item_specifics',
+              { missing: missingList, invalid: invalidList }
+            );
+          }
         }
       }
 

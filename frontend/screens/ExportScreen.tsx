@@ -34,12 +34,14 @@ interface ExportScreenProps {
     params: {
       listing: GenerateListingResponse;
       price: number;
+      itemSpecifics?: Record<string, string>;
+      missingItemSpecifics?: string[];
     };
   };
 }
 
 export default function ExportScreen({ navigation, route }: ExportScreenProps) {
-  const { listing, price } = route.params;
+  const { listing, price, itemSpecifics = {}, missingItemSpecifics = [] } = route.params;
   const [copied, setCopied] = useState<'title' | 'description' | 'all' | null>(null);
   const [exported, setExported] = useState(false);
 
@@ -96,10 +98,10 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   // Map error codes to user-friendly messages and actions
-  const getErrorGuidance = (errorCode?: string): { message: string; action?: string; showModal?: boolean } => {
+  const getErrorGuidance = (errorCode?: string, errorDetails?: any): { message: string; action?: string; showModal?: boolean; goBack?: boolean } => {
     switch (errorCode) {
       case 'INVALID_CATEGORY':
-        return { message: 'Category not valid for eBay', action: 'Select a valid category in the Preview screen' };
+        return { message: 'Category not valid for eBay', action: 'Select a valid category in the Preview screen', goBack: true };
       case 'MISSING_FULFILLMENT_POLICY':
         return { message: 'No shipping policy selected', action: 'Select a shipping policy below or configure in eBay Seller Hub' };
       case 'MISSING_RETURN_POLICY':
@@ -119,6 +121,25 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
         return { message: 'eBay connection expired', action: 'Go to Home screen to reconnect your eBay account' };
+      case 'MISSING_ITEM_SPECIFICS':
+        const missingList = errorDetails?.missing || [];
+        const missingNames = missingList.length > 0 ? missingList.join(', ') : 'required fields';
+        return {
+          message: `Missing required item specifics: ${missingNames}`,
+          action: 'Go back to Preview and fill in the required Item Specifics',
+          goBack: true,
+        };
+      case 'INVALID_ITEM_SPECIFIC_VALUE':
+        const invalidList = errorDetails?.invalid || [];
+        const firstInvalid = invalidList[0];
+        const invalidMsg = firstInvalid
+          ? `"${firstInvalid.value}" is not valid for ${firstInvalid.aspect}`
+          : 'An item specific value is invalid';
+        return {
+          message: invalidMsg,
+          action: 'Go back to Preview and select a valid value from the dropdown',
+          goBack: true,
+        };
       default:
         return { message: 'An error occurred', action: 'Please try again' };
     }
@@ -163,6 +184,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           listing_draft: listing.listingDraft,
           photo_urls: listing.photoUrls,
           pricing_suggestion: listing.pricingSuggestion,
+          item_specifics: itemSpecifics,  // Pass item specifics from PreviewScreen
         },
         {
           fulfillment_policy_id: selectedPolicies.fulfillment.policy_id,
@@ -199,14 +221,31 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         // Check for EBAY_LOCATION_REQUIRED error
         const errorCode = result.error?.code;
         const errorMessage = result.error?.message;
+        const errorDetails = result.error?.details;
 
         if (errorCode === 'EBAY_LOCATION_REQUIRED' || isLocationRequiredError(errorMessage)) {
           // Show location modal instead of alert
           setPendingRetry(true);
           setShowLocationModal(true);
         } else {
-          const guidance = getErrorGuidance(errorCode);
-          Alert.alert('Publish Failed', `${guidance.message}\n\n${guidance.action || ''}`);
+          const guidance = getErrorGuidance(errorCode, errorDetails);
+
+          if (guidance.goBack) {
+            // Show alert with option to go back to Preview
+            Alert.alert(
+              'Publish Failed',
+              `${guidance.message}\n\n${guidance.action || ''}`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Go to Preview',
+                  onPress: () => navigation.goBack(),
+                },
+              ]
+            );
+          } else {
+            Alert.alert('Publish Failed', `${guidance.message}\n\n${guidance.action || ''}`);
+          }
         }
       }
     } catch (err) {

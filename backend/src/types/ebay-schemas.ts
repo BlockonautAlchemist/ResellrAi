@@ -762,6 +762,73 @@ export function getCompsSourceMessage(
 }
 
 // =============================================================================
+// ITEM ASPECTS SCHEMAS (Taxonomy API)
+// =============================================================================
+
+/**
+ * Single aspect definition from eBay Taxonomy API
+ */
+export const AspectDefinitionSchema = z.object({
+  name: z.string(),                           // e.g., "Department", "Size", "Color"
+  required: z.boolean(),                      // Whether this aspect is required
+  mode: z.enum(['FREE_TEXT', 'SELECTION_ONLY']),  // Whether values must be from allowed list
+  allowedValues: z.array(z.string()).optional(),  // Allowed values for SELECTION_ONLY mode
+  maxLength: z.number().optional(),           // Max length for FREE_TEXT mode
+});
+export type AspectDefinition = z.infer<typeof AspectDefinitionSchema>;
+
+/**
+ * Complete item aspects metadata for a category
+ */
+export const ItemAspectsMetadataSchema = z.object({
+  categoryId: z.string(),
+  categoryTreeId: z.string(),
+  requiredAspects: z.array(AspectDefinitionSchema),
+  recommendedAspects: z.array(AspectDefinitionSchema),
+  cached: z.boolean(),
+  cacheAge: z.number().optional(),
+});
+export type ItemAspectsMetadata = z.infer<typeof ItemAspectsMetadataSchema>;
+
+/**
+ * Input for suggesting item specifics
+ */
+export const SuggestionInputSchema = z.object({
+  categoryId: z.string(),
+  aiAttributes: z.array(z.object({
+    key: z.string(),
+    value: z.string(),
+    confidence: z.number(),
+  })),
+  detectedBrand: z.object({
+    value: z.string().nullable(),
+    confidence: z.number(),
+  }).optional(),
+});
+export type SuggestionInput = z.infer<typeof SuggestionInputSchema>;
+
+/**
+ * Result from suggesting item specifics
+ */
+export const SuggestionResultSchema = z.object({
+  suggestedItemSpecifics: z.record(z.string(), z.string()),
+  missingRequiredAspects: z.array(z.string()),
+  invalidAspects: z.array(z.object({
+    aspectName: z.string(),
+    providedValue: z.string(),
+    allowedValues: z.array(z.string()),
+    suggestion: z.string().optional(),
+  })),
+  matchDetails: z.array(z.object({
+    aspectName: z.string(),
+    method: z.enum(['exact', 'synonym', 'fuzzy', 'direct']),
+    originalValue: z.string(),
+    matchedValue: z.string(),
+  })).optional(),
+});
+export type SuggestionResult = z.infer<typeof SuggestionResultSchema>;
+
+// =============================================================================
 // ITEM CONDITION SCHEMAS (Metadata API)
 // =============================================================================
 

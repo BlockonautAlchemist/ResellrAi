@@ -23,12 +23,14 @@ import {
   getEbayLocationService,
   getEbayTaxonomyService,
   getEbayMetadataService,
+  getEbayAspectsService,
   isEbayAvailable,
   createErrorResponse,
   EBAY_ERROR_CODES,
   logEbayError,
   generateTraceId,
 } from '../services/ebay/index.js';
+import { suggestItemSpecifics } from '../services/ebay/aspects-suggester.js';
 import {
   EbayConnectedAccountSchema,
   EbayCompsQuerySchema,
@@ -38,6 +40,9 @@ import {
   PublishToEbayRequestSchema,
   CreateLocationRequestSchema,
   SaveSellerLocationRequestSchema,
+  SuggestionInputSchema,
+  SuggestionResultSchema,
+  ItemAspectsMetadataSchema,
   getCompsSourceMessage,
 } from '../types/ebay-schemas.js';
 
@@ -721,6 +726,216 @@ router.get('/categories/:categoryId/conditions', async (req: Request, res: Respo
 });
 
 // =============================================================================
+// ITEM SPECIFICS / ASPECTS ROUTES
+// =============================================================================
+
+/**
+ * GET /api/v1/ebay/category/:categoryId/item_specifics
+ * Get item specifics metadata for a specific eBay category
+ *
+ * Returns required and recommended aspects with their allowed values.
+ * Used to populate item specifics form in the UI.
+ *
+ * Query params:
+ * - user_id: User ID (required)
+ * - marketplace: eBay marketplace ID (default: EBAY_US)
+ *
+ * Response:
+ * - categoryId: string
+ * - categoryTreeId: string
+ * - requiredAspects: Array of { name, required, mode, allowedValues? }
+ * - recommendedAspects: Array of { name, required, mode, allowedValues? }
+ * - cached: boolean
+ * - cacheAge?: number (seconds since cached)
+ */
+router.get('/category/:categoryId/item_specifics', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
+    const { categoryId } = req.params;
+    const marketplace = (req.query.marketplace as string) || 'EBAY_US';
+
+    if (!categoryId || categoryId.trim().length === 0) {
+      res.status(400).json({
+        error: {
+          code: 'CATEGORY_ID_REQUIRED',
+          message: 'Category ID is required',
+        },
+      });
+      return;
+    }
+
+    console.log(`[eBay Routes] Fetching item specifics for category ${categoryId}`);
+
+    // Resolve user's access token
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessToken(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account to get item specifics',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
+    // Fetch aspects from Taxonomy API
+    const aspectsService = getEbayAspectsService();
+    const result = await aspectsService.getItemAspectsForCategory(categoryId, marketplace, accessToken);
+
+    // Validate response
+    const validated = ItemAspectsMetadataSchema.parse(result);
+
+    res.json(validated);
+  } catch (error) {
+    console.error('[eBay Routes] Item specifics error:', error);
+    res.status(500).json({
+      error: {
+        code: 'ITEM_SPECIFICS_FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get item specifics',
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/v1/ebay/category/:categoryId/suggest_item_specifics
+ * Suggest item specifics based on AI attributes
+ *
+ * Maps AI-detected attributes to eBay aspects using fuzzy matching.
+ *
+ * Query params:
+ * - user_id: User ID (required)
+ * - marketplace: eBay marketplace ID (default: EBAY_US)
+ *
+ * Body:
+ * - aiAttributes: Array of { key: string, value: string, confidence: number }
+ * - detectedBrand?: { value: string | null, confidence: number }
+ *
+ * Response:
+ * - suggestedItemSpecifics: Record<string, string>
+ * - missingRequiredAspects: string[]
+ * - invalidAspects: Array of { aspectName, providedValue, allowedValues, suggestion? }
+ */
+router.post('/category/:categoryId/suggest_item_specifics', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
+    const { categoryId } = req.params;
+    const marketplace = (req.query.marketplace as string) || 'EBAY_US';
+
+    if (!categoryId || categoryId.trim().length === 0) {
+      res.status(400).json({
+        error: {
+          code: 'CATEGORY_ID_REQUIRED',
+          message: 'Category ID is required',
+        },
+      });
+      return;
+    }
+
+    // Validate request body
+    const parseResult = SuggestionInputSchema.safeParse({
+      categoryId,
+      ...req.body,
+    });
+
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parseResult.error.errors,
+        },
+      });
+      return;
+    }
+
+    const { aiAttributes, detectedBrand } = parseResult.data;
+
+    console.log(`[eBay Routes] Suggesting item specifics for category ${categoryId}`);
+    console.log(`[eBay Routes] AI attributes: ${aiAttributes.map(a => `${a.key}=${a.value}`).join(', ')}`);
+
+    // Resolve user's access token
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessToken(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
+    // First, fetch aspects metadata for the category
+    const aspectsService = getEbayAspectsService();
+    const aspectsMetadata = await aspectsService.getItemAspectsForCategory(categoryId, marketplace, accessToken);
+
+    // Then, suggest item specifics based on AI attributes
+    const suggestionResult = suggestItemSpecifics({
+      categoryId,
+      aiAttributes,
+      detectedBrand,
+      aspectsMetadata,
+    });
+
+    // Validate response
+    const validated = SuggestionResultSchema.parse(suggestionResult);
+
+    res.json(validated);
+  } catch (error) {
+    console.error('[eBay Routes] Suggest item specifics error:', error);
+
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request data',
+          details: error.errors,
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'SUGGESTION_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to suggest item specifics',
+      },
+    });
+  }
+});
+
+// =============================================================================
 // POLICY ROUTES
 // =============================================================================
 
@@ -1150,6 +1365,16 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
       listingData.photo_urls,
       body.price_override || listingData.pricing_suggestion?.midPrice || 0
     );
+
+    // Merge in item_specifics from frontend (if provided)
+    // These are the edited values from the ItemSpecificsEditor component
+    if (listingData.item_specifics && typeof listingData.item_specifics === 'object') {
+      draft.item_specifics = {
+        ...draft.item_specifics,
+        ...listingData.item_specifics,
+      };
+      console.log(`[eBay Routes] Merged item_specifics from frontend { traceId: ${traceId}, keys: ${Object.keys(listingData.item_specifics).join(', ')} }`);
+    }
 
     // Resolve policies: use provided or fetch defaults
     let policies = body.policies;

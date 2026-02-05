@@ -31,6 +31,23 @@ export {
 // Metadata service (category-specific conditions)
 export { EbayMetadataService, getEbayMetadataService } from './metadata.js';
 
+// Aspects service (category-specific item aspects/specifics)
+export {
+  EbayAspectsService,
+  getEbayAspectsService,
+  ASPECT_CATEGORY_TREE_IDS,
+  type AspectDefinition,
+  type ItemAspectsMetadata,
+} from './aspects.js';
+
+// Aspects suggester (AI-to-eBay mapping)
+export {
+  suggestItemSpecifics,
+  validateItemSpecifics,
+  type SuggestionInput,
+  type SuggestionResult,
+} from './aspects-suggester.js';
+
 // API client
 export { EbayApiClient, getEbayClient, isEbayAvailable, type EbayTokenResponse } from './client.js';
 
@@ -74,11 +91,13 @@ export {
   validatePublishInput,
   formatValidationErrors,
   validateConditionForCategory,
+  validateItemSpecificsForCategory,
   VALIDATION_ERROR_CODES,
   type ValidationError,
   type ValidationResult,
   type ValidationErrorCode,
   type ConditionValidationResult,
+  type ItemSpecificsValidationResult,
 } from './publish-validator.js';
 
 // Header utilities (fixes error 25709)

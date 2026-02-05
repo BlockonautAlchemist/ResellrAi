@@ -309,6 +309,10 @@ export interface EbayPublishResult {
     code: string;
     message: string;
     action?: string;
+    details?: {
+      missing?: string[];
+      invalid?: Array<{ aspect: string; value: string; allowed: string[] }>;
+    };
   };
   warnings?: Array<{ code: string; message: string }>;
   published_at?: string;
@@ -543,6 +547,7 @@ export async function publishToEbay(
     listing_draft: ListingDraft;
     photo_urls: string[];
     pricing_suggestion: PricingSuggestion;
+    item_specifics?: Record<string, string>;  // Optional direct item specifics
   },
   policies: {
     fulfillment_policy_id: string;
@@ -698,6 +703,142 @@ export async function getCategoryConditions(
       conditionRequired: false,
       conditions: [],
       cached: false,
+    };
+  }
+
+  return response.json();
+}
+
+// =============================================================================
+// Item Specifics / Aspects API
+// =============================================================================
+
+/**
+ * Single aspect definition from eBay
+ */
+export interface AspectDefinition {
+  name: string;                     // e.g., "Department", "Size", "Color"
+  required: boolean;                // Whether this aspect is required for the category
+  mode: 'FREE_TEXT' | 'SELECTION_ONLY';  // Whether values must be from allowed list
+  allowedValues?: string[];         // Allowed values for SELECTION_ONLY mode
+  maxLength?: number;               // Max length for FREE_TEXT mode
+}
+
+/**
+ * Item aspects metadata for a category
+ */
+export interface ItemAspectsMetadata {
+  categoryId: string;
+  categoryTreeId: string;
+  requiredAspects: AspectDefinition[];
+  recommendedAspects: AspectDefinition[];
+  cached: boolean;
+  cacheAge?: number;
+}
+
+/**
+ * Result from suggesting item specifics
+ */
+export interface SuggestionResult {
+  suggestedItemSpecifics: Record<string, string>;
+  missingRequiredAspects: string[];
+  invalidAspects: Array<{
+    aspectName: string;
+    providedValue: string;
+    allowedValues: string[];
+    suggestion?: string;
+  }>;
+  matchDetails?: Array<{
+    aspectName: string;
+    method: 'exact' | 'synonym' | 'fuzzy' | 'direct';
+    originalValue: string;
+    matchedValue: string;
+  }>;
+}
+
+/**
+ * Get item specifics metadata for a category
+ *
+ * @param categoryId - eBay category ID
+ * @param userId - User ID (required for eBay API access)
+ * @param marketplace - Marketplace ID (default: EBAY_US)
+ */
+export async function getCategoryItemAspects(
+  categoryId: string,
+  userId: string,
+  marketplace: string = 'EBAY_US'
+): Promise<ItemAspectsMetadata> {
+  const apiUrl = getApiUrlOrThrow();
+  const params = new URLSearchParams();
+  params.set('user_id', userId);
+  params.set('marketplace', marketplace);
+
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/category/${encodeURIComponent(categoryId)}/item_specifics?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    if (response.status === 401) {
+      throw new Error(error.message || 'Please connect your eBay account');
+    }
+    console.warn('[API] getCategoryItemAspects failed:', error);
+    // Return empty metadata on failure (let eBay validate)
+    return {
+      categoryId,
+      categoryTreeId: '0',
+      requiredAspects: [],
+      recommendedAspects: [],
+      cached: false,
+    };
+  }
+
+  return response.json();
+}
+
+/**
+ * Suggest item specifics based on AI attributes
+ *
+ * @param categoryId - eBay category ID
+ * @param userId - User ID (required for eBay API access)
+ * @param aiAttributes - AI-detected attributes
+ * @param detectedBrand - Detected brand (optional)
+ * @param marketplace - Marketplace ID (default: EBAY_US)
+ */
+export async function suggestItemSpecifics(
+  categoryId: string,
+  userId: string,
+  aiAttributes: Array<{ key: string; value: string; confidence: number }>,
+  detectedBrand?: { value: string | null; confidence: number },
+  marketplace: string = 'EBAY_US'
+): Promise<SuggestionResult> {
+  const apiUrl = getApiUrlOrThrow();
+  const params = new URLSearchParams();
+  params.set('user_id', userId);
+  params.set('marketplace', marketplace);
+
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/category/${encodeURIComponent(categoryId)}/suggest_item_specifics?${params.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        aiAttributes,
+        detectedBrand,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    console.warn('[API] suggestItemSpecifics failed:', error);
+    // Return empty result on failure
+    return {
+      suggestedItemSpecifics: {},
+      missingRequiredAspects: [],
+      invalidAspects: [],
     };
   }
 

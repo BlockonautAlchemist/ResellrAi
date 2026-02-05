@@ -15,10 +15,14 @@ import {
   regenerateField,
   updateListing,
   getCategoryConditions,
+  getCategoryItemAspects,
+  suggestItemSpecifics,
   type GenerateListingResponse,
   type CategoryCondition,
+  type ItemAspectsMetadata,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
+import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
 import { TEMP_USER_ID } from '../lib/constants';
 
 // Default condition options (used before category is selected or if API fails)
@@ -70,6 +74,12 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [availableConditions, setAvailableConditions] = useState<CategoryCondition[]>(DEFAULT_CONDITION_OPTIONS);
   const [isLoadingConditions, setIsLoadingConditions] = useState(false);
   const [conditionsError, setConditionsError] = useState<string | null>(null);
+
+  // Item specifics state
+  const [itemAspectsMetadata, setItemAspectsMetadata] = useState<ItemAspectsMetadata | null>(null);
+  const [itemSpecifics, setItemSpecifics] = useState<Record<string, string>>({});
+  const [missingAspects, setMissingAspects] = useState<string[]>([]);
+  const [isLoadingAspects, setIsLoadingAspects] = useState(false);
 
   const pricing = initialListing?.pricingSuggestion;
 
@@ -167,6 +177,106 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     };
   }, [selectedCategory?.categoryId]);
 
+  // Fetch item aspects and suggest values when category changes
+  useEffect(() => {
+    if (!selectedCategory?.categoryId) {
+      // No category selected - reset aspects
+      setItemAspectsMetadata(null);
+      setMissingAspects([]);
+      return;
+    }
+
+    const categoryId = selectedCategory.categoryId;
+    let isCancelled = false;
+
+    async function fetchAspectsAndSuggest() {
+      setIsLoadingAspects(true);
+
+      try {
+        // Step 1: Fetch aspects metadata for the category
+        const metadata = await getCategoryItemAspects(categoryId, TEMP_USER_ID);
+
+        if (isCancelled) return;
+
+        setItemAspectsMetadata(metadata);
+
+        // Step 2: If we have AI attributes, suggest item specifics
+        if (initialListing?.visionOutput?.detectedAttributes || initialListing?.listingDraft?.brand) {
+          const aiAttributes = (initialListing.visionOutput?.detectedAttributes || []).map(attr => ({
+            key: attr.key,
+            value: attr.value,
+            confidence: attr.confidence,
+          }));
+
+          // Add detected color if available
+          if (initialListing.visionOutput?.detectedColor?.value) {
+            aiAttributes.push({
+              key: 'color',
+              value: initialListing.visionOutput.detectedColor.value,
+              confidence: initialListing.visionOutput.detectedColor.confidence,
+            });
+          }
+
+          const suggestions = await suggestItemSpecifics(
+            categoryId,
+            TEMP_USER_ID,
+            aiAttributes,
+            initialListing.listingDraft?.brand
+          );
+
+          if (isCancelled) return;
+
+          // Merge suggestions with existing item specifics (preserve user edits)
+          setItemSpecifics(prev => ({
+            ...suggestions.suggestedItemSpecifics,
+            ...prev, // Keep user edits
+          }));
+
+          // Update missing aspects list
+          setMissingAspects(suggestions.missingRequiredAspects);
+        } else {
+          // No AI attributes - just track which required aspects are missing
+          const missing = metadata.requiredAspects
+            .filter(a => !itemSpecifics[a.name])
+            .map(a => a.name);
+          setMissingAspects(missing);
+        }
+      } catch (err) {
+        console.error('[ListingPreview] Error fetching aspects:', err);
+        if (!isCancelled) {
+          setItemAspectsMetadata(null);
+          setMissingAspects([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingAspects(false);
+        }
+      }
+    }
+
+    fetchAspectsAndSuggest();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedCategory?.categoryId]);
+
+  // Handle item specifics change
+  const handleItemSpecificChange = (key: string, value: string) => {
+    setItemSpecifics(prev => ({
+      ...prev,
+      [key]: value,
+    }));
+
+    // Remove from missing if it now has a value
+    if (value.trim()) {
+      setMissingAspects(prev => prev.filter(name => name !== key));
+    } else if (itemAspectsMetadata?.requiredAspects.some(a => a.name === key)) {
+      // Add to missing if it's required and now empty
+      setMissingAspects(prev => prev.includes(key) ? prev : [...prev, key]);
+    }
+  };
+
   const handleViewComps = () => {
     navigation.navigate('Comps', {
       keywords: title,
@@ -221,6 +331,14 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   };
 
   const handleExport = () => {
+    // Merge existing attributes with item specifics for export
+    const mergedAttributes = [
+      ...initialListing.listingDraft.attributes,
+      ...Object.entries(itemSpecifics)
+        .filter(([key, value]) => value && !initialListing.listingDraft.attributes.some(a => a.key === key))
+        .map(([key, value]) => ({ key, value, editable: true })),
+    ];
+
     navigation.navigate('Export', {
       listing: {
         ...initialListing,
@@ -237,9 +355,12 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             ...initialListing.listingDraft.condition,
             value: selectedCondition,
           },
+          attributes: mergedAttributes,
         },
       },
       price: selectedPrice,
+      itemSpecifics,
+      missingItemSpecifics: missingAspects,
     });
   };
 
@@ -400,6 +521,15 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             </View>
           ))}
         </View>
+
+        {/* Item Specifics (eBay category-specific) */}
+        <ItemSpecificsEditor
+          metadata={itemAspectsMetadata}
+          values={itemSpecifics}
+          onChange={handleItemSpecificChange}
+          missingAspects={missingAspects}
+          isLoading={isLoadingAspects}
+        />
 
         {/* Condition */}
         <View style={styles.section}>
