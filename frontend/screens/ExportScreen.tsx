@@ -23,6 +23,8 @@ import {
   type EbayPublishStep,
   type EbayPublishResult,
   type SellerLocationProfile,
+  type PackageWeight,
+  type PackageDimensions,
 } from '../lib/api';
 import PublishProgress from '../components/PublishProgress';
 import LocationModal from '../components/LocationModal';
@@ -36,12 +38,14 @@ interface ExportScreenProps {
       price: number;
       itemSpecifics?: Record<string, string>;
       missingItemSpecifics?: string[];
+      packageWeight?: PackageWeight;
+      packageDimensions?: PackageDimensions;
     };
   };
 }
 
 export default function ExportScreen({ navigation, route }: ExportScreenProps) {
-  const { listing, price, itemSpecifics = {}, missingItemSpecifics = [] } = route.params;
+  const { listing, price, itemSpecifics = {}, missingItemSpecifics = [], packageWeight, packageDimensions } = route.params;
   const [copied, setCopied] = useState<'title' | 'description' | 'all' | null>(null);
   const [exported, setExported] = useState(false);
 
@@ -140,6 +144,13 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           action: 'Go back to Preview and select a valid value from the dropdown',
           goBack: true,
         };
+      case 'VALIDATION_MISSING_PACKAGE_WEIGHT':
+      case 'MISSING_PACKAGE_WEIGHT':
+        return {
+          message: 'Package weight is required',
+          action: 'Go back to Preview and enter the package weight',
+          goBack: true,
+        };
       default:
         return { message: 'An error occurred', action: 'Please try again' };
     }
@@ -185,6 +196,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           photo_urls: listing.photoUrls,
           pricing_suggestion: listing.pricingSuggestion,
           item_specifics: itemSpecifics,  // Pass item specifics from PreviewScreen
+          package_weight: packageWeight,  // Pass package weight from PreviewScreen
+          package_dimensions: packageDimensions,  // Pass package dimensions from PreviewScreen
         },
         {
           fulfillment_policy_id: selectedPolicies.fulfillment.policy_id,

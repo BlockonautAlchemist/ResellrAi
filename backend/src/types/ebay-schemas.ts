@@ -205,6 +205,36 @@ export const EbayCompsResultSchema = z.object({
 export type EbayCompsResult = z.infer<typeof EbayCompsResultSchema>;
 
 // =============================================================================
+// PACKAGE WEIGHT AND DIMENSIONS SCHEMA
+// =============================================================================
+
+export const WeightUnitEnum = z.enum(['OUNCE', 'POUND']);
+export type WeightUnit = z.infer<typeof WeightUnitEnum>;
+
+export const DimensionUnitEnum = z.enum(['INCH', 'CENTIMETER']);
+export type DimensionUnit = z.infer<typeof DimensionUnitEnum>;
+
+/**
+ * Package weight for shipping
+ */
+export const PackageWeightSchema = z.object({
+  value: z.number().positive(),
+  unit: WeightUnitEnum,
+});
+export type PackageWeight = z.infer<typeof PackageWeightSchema>;
+
+/**
+ * Package dimensions for shipping
+ */
+export const PackageDimensionsSchema = z.object({
+  length: z.number().positive(),
+  width: z.number().positive(),
+  height: z.number().positive(),
+  unit: DimensionUnitEnum,
+});
+export type PackageDimensions = z.infer<typeof PackageDimensionsSchema>;
+
+// =============================================================================
 // LISTING / PUBLISH SCHEMAS
 // =============================================================================
 
@@ -228,6 +258,8 @@ export const EbayListingDraftSchema = z.object({
   quantity: z.number().int().positive().default(1),
   image_urls: z.array(z.string().url()).min(1).max(12),
   item_specifics: z.record(z.string(), z.string()),
+  package_weight: PackageWeightSchema.optional(),
+  package_dimensions: PackageDimensionsSchema.optional(),
   format: z.literal('FIXED_PRICE'),
   policies: z
     .object({
@@ -258,6 +290,18 @@ export const EbayInventoryItemPayloadSchema = z.object({
       quantity: z.number().int().min(0),
     }),
   }),
+  packageWeightAndSize: z.object({
+    weight: z.object({
+      value: z.number().positive(),
+      unit: WeightUnitEnum,
+    }),
+    dimensions: z.object({
+      length: z.number().positive(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+      unit: DimensionUnitEnum,
+    }),
+  }).optional(),
 });
 export type EbayInventoryItemPayload = z.infer<typeof EbayInventoryItemPayloadSchema>;
 

@@ -1043,6 +1043,21 @@ export class EbayListingService {
       availability: {
         shipToLocationAvailability: { quantity },
       },
+      // Package weight and dimensions for shipping (fixes eBay error 25020)
+      ...(draft.package_weight && draft.package_dimensions && {
+        packageWeightAndSize: {
+          weight: {
+            value: draft.package_weight.value,
+            unit: draft.package_weight.unit,
+          },
+          dimensions: {
+            length: draft.package_dimensions.length,
+            width: draft.package_dimensions.width,
+            height: draft.package_dimensions.height,
+            unit: draft.package_dimensions.unit,
+          },
+        },
+      }),
     };
 
     // Final validation with Zod schema
@@ -1162,7 +1177,9 @@ export class EbayListingService {
       attributes: Array<{ key: string; value: string }>;
     },
     photoUrls: string[],
-    price: number
+    price: number,
+    packageWeight?: { value: number; unit: 'OUNCE' | 'POUND' },
+    packageDimensions?: { length: number; width: number; height: number; unit: 'INCH' | 'CENTIMETER' }
   ): EbayListingDraft {
     // Build item specifics from attributes
     const itemSpecifics: Record<string, string> = {};
@@ -1192,6 +1209,8 @@ export class EbayListingService {
       quantity: 1,
       image_urls: photoUrls,
       item_specifics: itemSpecifics,
+      package_weight: packageWeight,
+      package_dimensions: packageDimensions,
       format: 'FIXED_PRICE',
     };
   }

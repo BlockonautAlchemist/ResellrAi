@@ -1359,11 +1359,17 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
     const listingService = getEbayListingService();
     const policyService = getEbayPolicyService();
 
+    // Extract package details from listing data
+    const packageWeight = listingData.package_weight;
+    const packageDimensions = listingData.package_dimensions;
+
     const draft = listingService.buildDraftFromListing(
       listingId,
       listingData.listing_draft,
       listingData.photo_urls,
-      body.price_override || listingData.pricing_suggestion?.midPrice || 0
+      body.price_override || listingData.pricing_suggestion?.midPrice || 0,
+      packageWeight,
+      packageDimensions
     );
 
     // Merge in item_specifics from frontend (if provided)

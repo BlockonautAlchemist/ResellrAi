@@ -109,3 +109,16 @@ export {
   logRequestHeaders,
   DEFAULT_CONTENT_LANGUAGE,
 } from './header-utils.js';
+
+// Weight and dimension defaults (fixes error 25020)
+export {
+  getDefaultWeight,
+  getDefaultDimensions,
+  getDefaultPackageDetails,
+  convertWeight,
+  formatWeightDisplay,
+  formatDimensionsDisplay,
+  type WeightSuggestion,
+  type DimensionsSuggestion,
+  type PackageSuggestion,
+} from './weight-defaults.js';

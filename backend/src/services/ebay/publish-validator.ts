@@ -30,6 +30,8 @@ export const VALIDATION_ERROR_CODES = {
   LOCATION_REQUIRED: 'VALIDATION_LOCATION_REQUIRED',
   MISSING_ITEM_SPECIFICS: 'VALIDATION_MISSING_ITEM_SPECIFICS',
   INVALID_ITEM_SPECIFIC_VALUE: 'VALIDATION_INVALID_ITEM_SPECIFIC_VALUE',
+  MISSING_PACKAGE_WEIGHT: 'VALIDATION_MISSING_PACKAGE_WEIGHT',
+  MISSING_PACKAGE_DIMENSIONS: 'VALIDATION_MISSING_PACKAGE_DIMENSIONS',
 } as const;
 
 export type ValidationErrorCode = typeof VALIDATION_ERROR_CODES[keyof typeof VALIDATION_ERROR_CODES];
@@ -235,6 +237,27 @@ export function validatePublishInput(
       code: VALIDATION_ERROR_CODES.LOCATION_REQUIRED,
       field: 'merchantLocationKey',
       message: 'Merchant location key is required',
+    });
+  }
+
+  // Package weight validation
+  if (!draft.package_weight || draft.package_weight.value <= 0) {
+    errors.push({
+      code: VALIDATION_ERROR_CODES.MISSING_PACKAGE_WEIGHT,
+      field: 'package_weight',
+      message: 'Package weight is required for shipping',
+    });
+  }
+
+  // Package dimensions validation
+  if (!draft.package_dimensions ||
+      draft.package_dimensions.length <= 0 ||
+      draft.package_dimensions.width <= 0 ||
+      draft.package_dimensions.height <= 0) {
+    errors.push({
+      code: VALIDATION_ERROR_CODES.MISSING_PACKAGE_DIMENSIONS,
+      field: 'package_dimensions',
+      message: 'Package dimensions (length, width, height) are required for shipping',
     });
   }
 

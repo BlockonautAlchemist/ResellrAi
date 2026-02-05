@@ -20,9 +20,14 @@ import {
   type GenerateListingResponse,
   type CategoryCondition,
   type ItemAspectsMetadata,
+  type PackageWeight,
+  type PackageDimensions,
+  type WeightSuggestion,
+  type DimensionsSuggestion,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
 import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
+import WeightInput from '../components/WeightInput';
 import { TEMP_USER_ID } from '../lib/constants';
 
 // Default condition options (used before category is selected or if API fails)
@@ -81,6 +86,12 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [missingAspects, setMissingAspects] = useState<string[]>([]);
   const [isLoadingAspects, setIsLoadingAspects] = useState(false);
 
+  // Package weight and dimensions state
+  const [packageWeight, setPackageWeight] = useState<PackageWeight | null>(null);
+  const [packageDimensions, setPackageDimensions] = useState<PackageDimensions | null>(null);
+  const [suggestedWeight, setSuggestedWeight] = useState<WeightSuggestion | null>(null);
+  const [suggestedDimensions, setSuggestedDimensions] = useState<DimensionsSuggestion | null>(null);
+
   const pricing = initialListing?.pricingSuggestion;
 
   // Guard: show fallback UI if no listing data
@@ -108,6 +119,141 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       setSelectedPrice(selectedPriceFromComps);
     }
   }, [selectedPriceFromComps]);
+
+  // Calculate suggested weight and dimensions from AI-detected attributes
+  useEffect(() => {
+    if (!initialListing?.visionOutput?.detectedAttributes) {
+      // Set defaults even without AI attributes
+      setSuggestedWeight({
+        value: 16, // 1 lb default
+        unit: 'OUNCE',
+        confidence: 'low',
+        source: 'Default weight (1 lb)',
+      });
+      setSuggestedDimensions({
+        length: 12,
+        width: 10,
+        height: 2,
+        unit: 'INCH',
+        confidence: 'low',
+        source: 'Default dimensions',
+      });
+      return;
+    }
+
+    const aiAttributes = initialListing.visionOutput.detectedAttributes;
+
+    // Weight defaults table (in ounces)
+    const APPAREL_WEIGHTS: Record<string, number> = {
+      't-shirt': 8, 'tee': 8, 'tank top': 6, 'tank': 6,
+      'long sleeve': 10, 'polo': 10, 'blouse': 10,
+      'hoodie': 24, 'sweatshirt': 24, 'sweater': 16,
+      'jeans': 28, 'denim': 28, 'pants': 24, 'shorts': 12,
+      'dress': 16, 'skirt': 12,
+      'shoes': 32, 'sneakers': 32, 'boots': 48,
+      'jacket': 32, 'coat': 48, 'blazer': 24,
+    };
+
+    // Dimensions defaults table (L x W x H in inches) - folded/packaged dimensions
+    const APPAREL_DIMENSIONS: Record<string, [number, number, number]> = {
+      't-shirt': [10, 8, 1], 'tee': [10, 8, 1], 'tank top': [10, 8, 1], 'tank': [10, 8, 1],
+      'long sleeve': [12, 10, 2], 'polo': [12, 10, 2], 'blouse': [12, 10, 1],
+      'hoodie': [14, 12, 4], 'sweatshirt': [14, 12, 4], 'sweater': [14, 12, 3],
+      'jeans': [14, 10, 3], 'denim': [14, 10, 3], 'pants': [14, 10, 3], 'shorts': [12, 10, 2],
+      'dress': [14, 10, 2], 'skirt': [12, 10, 2],
+      'shoes': [14, 10, 5], 'sneakers': [14, 10, 5], 'boots': [16, 12, 8],
+      'jacket': [16, 14, 4], 'coat': [18, 14, 6], 'blazer': [16, 14, 3],
+    };
+
+    // Keys to check for apparel type
+    const typeKeys = ['apparelType', 'productType', 'type', 'category', 'garmentType', 'itemType'];
+
+    // Find apparel type
+    let apparelType: string | null = null;
+    let matchedAttr: { key: string; value: string; confidence: number } | null = null;
+
+    for (const attr of aiAttributes) {
+      const keyLower = attr.key.toLowerCase();
+      if (typeKeys.some(k => keyLower.includes(k.toLowerCase()))) {
+        apparelType = attr.value.toLowerCase();
+        matchedAttr = attr;
+        break;
+      }
+    }
+
+    // If no type found, try to find any attribute value that matches
+    if (!apparelType) {
+      for (const attr of aiAttributes) {
+        const valueLower = attr.value.toLowerCase();
+        if (APPAREL_WEIGHTS[valueLower]) {
+          apparelType = valueLower;
+          matchedAttr = attr;
+          break;
+        }
+      }
+    }
+
+    // Look up weight and dimensions
+    if (apparelType) {
+      let weight = APPAREL_WEIGHTS[apparelType];
+      let dims = APPAREL_DIMENSIONS[apparelType];
+
+      // Try partial match
+      if (!weight || !dims) {
+        for (const [key, oz] of Object.entries(APPAREL_WEIGHTS)) {
+          if (apparelType.includes(key) || key.includes(apparelType)) {
+            weight = weight || oz;
+            dims = dims || APPAREL_DIMENSIONS[key];
+            break;
+          }
+        }
+      }
+
+      const confidence = matchedAttr?.confidence
+        ? matchedAttr.confidence >= 0.8 ? 'high' : matchedAttr.confidence >= 0.5 ? 'medium' : 'low'
+        : 'medium';
+
+      if (weight) {
+        setSuggestedWeight({
+          value: weight,
+          unit: 'OUNCE',
+          confidence: confidence as 'high' | 'medium' | 'low',
+          source: `Based on detected ${matchedAttr?.key || 'type'}: ${apparelType}`,
+        });
+      }
+
+      if (dims) {
+        setSuggestedDimensions({
+          length: dims[0],
+          width: dims[1],
+          height: dims[2],
+          unit: 'INCH',
+          confidence: confidence as 'high' | 'medium' | 'low',
+          source: `Based on detected ${matchedAttr?.key || 'type'}: ${apparelType}`,
+        });
+      }
+
+      if (weight || dims) {
+        return;
+      }
+    }
+
+    // Default fallback
+    setSuggestedWeight({
+      value: 16, // 1 lb default
+      unit: 'OUNCE',
+      confidence: 'low',
+      source: 'Default weight (1 lb)',
+    });
+    setSuggestedDimensions({
+      length: 12,
+      width: 10,
+      height: 2,
+      unit: 'INCH',
+      confidence: 'low',
+      source: 'Default dimensions',
+    });
+  }, [initialListing?.visionOutput?.detectedAttributes]);
 
   // Fetch valid conditions when category changes
   useEffect(() => {
@@ -361,6 +507,8 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       price: selectedPrice,
       itemSpecifics,
       missingItemSpecifics: missingAspects,
+      packageWeight,
+      packageDimensions,
     });
   };
 
@@ -529,6 +677,16 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           onChange={handleItemSpecificChange}
           missingAspects={missingAspects}
           isLoading={isLoadingAspects}
+        />
+
+        {/* Package Weight */}
+        <WeightInput
+          weight={packageWeight}
+          dimensions={packageDimensions}
+          suggestedWeight={suggestedWeight}
+          suggestedDimensions={suggestedDimensions}
+          onWeightChange={setPackageWeight}
+          onDimensionsChange={setPackageDimensions}
         />
 
         {/* Condition */}

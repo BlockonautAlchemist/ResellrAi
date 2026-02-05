@@ -105,6 +105,40 @@ export interface ListingRecord {
 }
 
 // =============================================================================
+// Package Weight and Dimensions Types
+// =============================================================================
+
+export type WeightUnit = 'OUNCE' | 'POUND';
+export type DimensionUnit = 'INCH' | 'CENTIMETER';
+
+export interface PackageWeight {
+  value: number;
+  unit: WeightUnit;
+}
+
+export interface PackageDimensions {
+  length: number;
+  width: number;
+  height: number;
+  unit: DimensionUnit;
+}
+
+export interface WeightSuggestion extends PackageWeight {
+  confidence: 'high' | 'medium' | 'low';
+  source: string;
+}
+
+export interface DimensionsSuggestion extends PackageDimensions {
+  confidence: 'high' | 'medium' | 'low';
+  source: string;
+}
+
+export interface PackageSuggestion {
+  weight: WeightSuggestion;
+  dimensions: DimensionsSuggestion;
+}
+
+// =============================================================================
 // Health Check
 // =============================================================================
 
@@ -548,6 +582,8 @@ export async function publishToEbay(
     photo_urls: string[];
     pricing_suggestion: PricingSuggestion;
     item_specifics?: Record<string, string>;  // Optional direct item specifics
+    package_weight?: PackageWeight;  // Required for shipping
+    package_dimensions?: PackageDimensions;  // Required for shipping
   },
   policies: {
     fulfillment_policy_id: string;
