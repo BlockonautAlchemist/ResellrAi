@@ -388,7 +388,7 @@ export const EbayPublishResultSchema = z.object({
   warnings: z
     .array(
       z.object({
-        code: z.string(),
+        code: z.union([z.string(), z.number()]).transform(String),
         message: z.string(),
       })
     )
@@ -905,3 +905,70 @@ export interface CategoryConditionsResult {
   cached: boolean;
   cacheAge?: number;  // Seconds since cached
 }
+
+// =============================================================================
+// AI CATEGORY SUGGESTION SCHEMAS
+// =============================================================================
+
+/**
+ * Single AI category suggestion
+ */
+export const AiCategorySuggestionSchema = z.object({
+  categoryId: z.string(),
+  categoryName: z.string(),
+  categoryTreeId: z.string(),
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+});
+export type AiCategorySuggestion = z.infer<typeof AiCategorySuggestionSchema>;
+
+/**
+ * Request for AI category suggestion
+ */
+export const AiCategorySuggestRequestSchema = z.object({
+  listingId: z.string().uuid().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+}).refine(
+  data => !!data.listingId || !!data.title,
+  { message: 'Either listingId or title is required' }
+);
+export type AiCategorySuggestRequest = z.infer<typeof AiCategorySuggestRequestSchema>;
+
+/**
+ * Response from AI category suggestion
+ */
+export const AiCategorySuggestResponseSchema = z.object({
+  primary: AiCategorySuggestionSchema,
+  alternatives: z.array(AiCategorySuggestionSchema),
+});
+export type AiCategorySuggestResponse = z.infer<typeof AiCategorySuggestResponseSchema>;
+
+// =============================================================================
+// AI AUTOFILL ITEM SPECIFICS SCHEMAS
+// =============================================================================
+
+/**
+ * Request for AI autofill item specifics
+ */
+export const AiAutofillRequestSchema = z.object({
+  listingId: z.string().uuid(),
+  categoryId: z.string(),
+  categoryTreeId: z.string().default('0'),
+  currentItemSpecifics: z.record(z.string(), z.string()).default({}),
+});
+export type AiAutofillRequest = z.infer<typeof AiAutofillRequestSchema>;
+
+/**
+ * Response from AI autofill item specifics
+ */
+export const AiAutofillResponseSchema = z.object({
+  itemSpecifics: z.record(z.string(), z.string()),
+  filledByAi: z.array(z.string()),
+  stillMissing: z.array(z.string()),
+  aspectsMetadata: z.object({
+    requiredAspects: z.array(AspectDefinitionSchema),
+    recommendedAspects: z.array(AspectDefinitionSchema),
+  }),
+});
+export type AiAutofillResponse = z.infer<typeof AiAutofillResponseSchema>;

@@ -931,3 +931,103 @@ export async function saveSellerLocation(
   const result = await response.json();
   return result.profile;
 }
+
+// =============================================================================
+// AI Category Suggestion + Autofill API
+// =============================================================================
+
+/**
+ * Single AI category suggestion
+ */
+export interface AiCategorySuggestion {
+  categoryId: string;
+  categoryName: string;
+  categoryTreeId: string;
+  confidence: number;
+  reason: string;
+}
+
+/**
+ * AI category suggestion response
+ */
+export interface AiCategorySuggestResponse {
+  primary: AiCategorySuggestion;
+  alternatives: AiCategorySuggestion[];
+}
+
+/**
+ * AI autofill response
+ */
+export interface AiAutofillResponse {
+  itemSpecifics: Record<string, string>;
+  filledByAi: string[];
+  stillMissing: string[];
+  aspectsMetadata: {
+    requiredAspects: AspectDefinition[];
+    recommendedAspects: AspectDefinition[];
+  };
+}
+
+/**
+ * Get AI-powered category suggestion for a listing
+ */
+export async function suggestAiCategory(
+  listingId: string,
+  userId: string
+): Promise<AiCategorySuggestResponse> {
+  const apiUrl = getApiUrlOrThrow();
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/ai/category-suggest?user_id=${userId}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    throw new Error(error.error?.message || `AI category suggest failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * AI-powered autofill of required item specifics
+ */
+export async function autofillItemSpecifics(
+  listingId: string,
+  categoryId: string,
+  userId: string,
+  currentSpecifics: Record<string, string> = {}
+): Promise<AiAutofillResponse> {
+  const apiUrl = getApiUrlOrThrow();
+  const response = await fetch(
+    `${apiUrl}/api/v1/ebay/ai/autofill-specifics?user_id=${userId}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        listingId,
+        categoryId,
+        categoryTreeId: '0',
+        currentItemSpecifics: currentSpecifics,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    console.warn('[API] autofillItemSpecifics failed:', error);
+    // Return empty result on failure
+    return {
+      itemSpecifics: currentSpecifics,
+      filledByAi: [],
+      stillMissing: [],
+      aspectsMetadata: { requiredAspects: [], recommendedAspects: [] },
+    };
+  }
+
+  return response.json();
+}

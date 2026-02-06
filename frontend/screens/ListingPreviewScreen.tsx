@@ -16,7 +16,8 @@ import {
   updateListing,
   getCategoryConditions,
   getCategoryItemAspects,
-  suggestItemSpecifics,
+  suggestAiCategory,
+  autofillItemSpecifics,
   type GenerateListingResponse,
   type CategoryCondition,
   type ItemAspectsMetadata,
@@ -24,6 +25,7 @@ import {
   type PackageDimensions,
   type WeightSuggestion,
   type DimensionsSuggestion,
+  type AiCategorySuggestResponse,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
 import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
@@ -63,11 +65,13 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [selectedCategory, setSelectedCategory] = useState<{
     categoryId: string;
     categoryName: string;
+    categoryTreeId: string;
   } | undefined>(
     initialListing.listingDraft.category.platformCategoryId
       ? {
           categoryId: initialListing.listingDraft.category.platformCategoryId,
           categoryName: initialListing.listingDraft.category.value,
+          categoryTreeId: '0',
         }
       : undefined
   );
@@ -85,6 +89,27 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [itemSpecifics, setItemSpecifics] = useState<Record<string, string>>({});
   const [missingAspects, setMissingAspects] = useState<string[]>([]);
   const [isLoadingAspects, setIsLoadingAspects] = useState(false);
+
+  // AI category suggestion state
+  const [aiCategorySuggestion, setAiCategorySuggestion] = useState<AiCategorySuggestResponse | null>(null);
+  const [isLoadingAiCategory, setIsLoadingAiCategory] = useState(false);
+  const [isAutofillingSpecifics, setIsAutofillingSpecifics] = useState(false);
+  const [aiFilledFields, setAiFilledFields] = useState<string[]>([]);
+
+  // Category change handler: reset dependent state when category changes
+  const handleCategoryChange = (category: { categoryId: string; categoryName: string; categoryTreeId: string }) => {
+    setSelectedCategory(category);
+    // Reset condition to default — will be re-fetched by the conditions useEffect
+    setSelectedCondition('USED_GOOD');
+    setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
+    // Reset item specifics — will be re-fetched by the aspects useEffect
+    setItemSpecifics({});
+    setItemAspectsMetadata(null);
+    setMissingAspects([]);
+    setAiFilledFields([]);
+    // Clear AI suggestion when user manually changes category
+    setAiCategorySuggestion(null);
+  };
 
   // Package weight and dimensions state
   const [packageWeight, setPackageWeight] = useState<PackageWeight | null>(null);
@@ -119,6 +144,43 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       setSelectedPrice(selectedPriceFromComps);
     }
   }, [selectedPriceFromComps]);
+
+  // AI Category Suggestion: auto-suggest category when listing loads
+  useEffect(() => {
+    if (!initialListing?.itemId) return;
+    // Skip if category already set from listing draft
+    if (selectedCategory?.categoryId) return;
+
+    let isCancelled = false;
+
+    async function fetchAiCategory() {
+      setIsLoadingAiCategory(true);
+      try {
+        const result = await suggestAiCategory(initialListing.itemId, TEMP_USER_ID);
+        if (isCancelled) return;
+
+        setAiCategorySuggestion(result);
+
+        // Auto-set the primary suggestion as selected category
+        setSelectedCategory({
+          categoryId: result.primary.categoryId,
+          categoryName: result.primary.categoryName,
+          categoryTreeId: result.primary.categoryTreeId,
+        });
+      } catch (err) {
+        console.warn('[ListingPreview] AI category suggestion failed:', err);
+        // Silently fail - user can still pick manually
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingAiCategory(false);
+        }
+      }
+    }
+
+    fetchAiCategory();
+
+    return () => { isCancelled = true; };
+  }, [initialListing?.itemId]);
 
   // Calculate suggested weight and dimensions from AI-detected attributes
   useEffect(() => {
@@ -257,7 +319,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
 
   // Fetch valid conditions when category changes
   useEffect(() => {
-    if (!selectedCategory?.categoryId) {
+    if (!selectedCategory?.categoryId || selectedCategory.categoryId.trim() === '') {
       // No category selected - use default conditions
       setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
       setConditionsError(null);
@@ -323,72 +385,77 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     };
   }, [selectedCategory?.categoryId]);
 
-  // Fetch item aspects and suggest values when category changes
+  // Fetch item aspects and autofill values when category changes
   useEffect(() => {
-    if (!selectedCategory?.categoryId) {
-      // No category selected - reset aspects
+    if (!selectedCategory?.categoryId || selectedCategory.categoryId.trim() === '' ||
+        !selectedCategory?.categoryTreeId || selectedCategory.categoryTreeId.trim() === '') {
+      // No category selected or missing treeId - reset aspects
       setItemAspectsMetadata(null);
       setMissingAspects([]);
       return;
     }
 
     const categoryId = selectedCategory.categoryId;
+    const categoryTreeId = selectedCategory.categoryTreeId;
     let isCancelled = false;
 
-    async function fetchAspectsAndSuggest() {
+    if (__DEV__) {
+      console.log(`[ListingPreview] Fetching aspects + AI autofill { categoryId: ${categoryId}, categoryTreeId: ${categoryTreeId} }`);
+    }
+
+    async function fetchAspectsAndAutofill() {
       setIsLoadingAspects(true);
+      setIsAutofillingSpecifics(true);
 
       try {
-        // Step 1: Fetch aspects metadata for the category
-        const metadata = await getCategoryItemAspects(categoryId, TEMP_USER_ID);
-
-        if (isCancelled) return;
-
-        setItemAspectsMetadata(metadata);
-
-        // Step 2: If we have AI attributes, suggest item specifics
-        if (initialListing?.visionOutput?.detectedAttributes || initialListing?.listingDraft?.brand) {
-          const aiAttributes = (initialListing.visionOutput?.detectedAttributes || []).map(attr => ({
-            key: attr.key,
-            value: attr.value,
-            confidence: attr.confidence,
-          }));
-
-          // Add detected color if available
-          if (initialListing.visionOutput?.detectedColor?.value) {
-            aiAttributes.push({
-              key: 'color',
-              value: initialListing.visionOutput.detectedColor.value,
-              confidence: initialListing.visionOutput.detectedColor.confidence,
-            });
-          }
-
-          const suggestions = await suggestItemSpecifics(
+        // Use AI autofill endpoint which fetches aspects AND fills specifics in one call
+        if (initialListing?.itemId) {
+          const result = await autofillItemSpecifics(
+            initialListing.itemId,
             categoryId,
             TEMP_USER_ID,
-            aiAttributes,
-            initialListing.listingDraft?.brand
+            itemSpecifics
           );
 
           if (isCancelled) return;
 
-          // Merge suggestions with existing item specifics (preserve user edits)
-          setItemSpecifics(prev => ({
-            ...suggestions.suggestedItemSpecifics,
-            ...prev, // Keep user edits
-          }));
+          // Set aspects metadata from the response
+          if (result.aspectsMetadata) {
+            setItemAspectsMetadata({
+              categoryId,
+              categoryTreeId,
+              requiredAspects: result.aspectsMetadata.requiredAspects,
+              recommendedAspects: result.aspectsMetadata.recommendedAspects,
+              cached: false,
+            });
+          }
 
-          // Update missing aspects list
-          setMissingAspects(suggestions.missingRequiredAspects);
+          // Merge AI-filled specifics (preserve user edits)
+          setItemSpecifics(prev => {
+            const merged = { ...result.itemSpecifics };
+            // Keep any user edits that already existed
+            for (const [key, val] of Object.entries(prev)) {
+              if (val && val.trim() !== '') {
+                merged[key] = val;
+              }
+            }
+            return merged;
+          });
+
+          setAiFilledFields(result.filledByAi);
+          setMissingAspects(result.stillMissing);
         } else {
-          // No AI attributes - just track which required aspects are missing
+          // Fallback: just fetch aspects metadata
+          const metadata = await getCategoryItemAspects(categoryId, TEMP_USER_ID);
+          if (isCancelled) return;
+          setItemAspectsMetadata(metadata);
           const missing = metadata.requiredAspects
             .filter(a => !itemSpecifics[a.name])
             .map(a => a.name);
           setMissingAspects(missing);
         }
       } catch (err) {
-        console.error('[ListingPreview] Error fetching aspects:', err);
+        console.error('[ListingPreview] Error fetching aspects/autofill:', err);
         if (!isCancelled) {
           setItemAspectsMetadata(null);
           setMissingAspects([]);
@@ -396,16 +463,17 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       } finally {
         if (!isCancelled) {
           setIsLoadingAspects(false);
+          setIsAutofillingSpecifics(false);
         }
       }
     }
 
-    fetchAspectsAndSuggest();
+    fetchAspectsAndAutofill();
 
     return () => {
       isCancelled = true;
     };
-  }, [selectedCategory?.categoryId]);
+  }, [selectedCategory?.categoryId, selectedCategory?.categoryTreeId]);
 
   // Handle item specifics change
   const handleItemSpecificChange = (key: string, value: string) => {
@@ -612,7 +680,9 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         <CategoryPicker
           value={selectedCategory}
           suggestedQuery={`${initialListing.listingDraft.brand?.value || ''} ${title}`.trim()}
-          onChange={setSelectedCategory}
+          onChange={handleCategoryChange}
+          aiSuggestion={aiCategorySuggestion || undefined}
+          isLoadingAi={isLoadingAiCategory}
         />
 
         {/* Pricing */}
@@ -671,13 +741,21 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         </View>
 
         {/* Item Specifics (eBay category-specific) */}
-        <ItemSpecificsEditor
-          metadata={itemAspectsMetadata}
-          values={itemSpecifics}
-          onChange={handleItemSpecificChange}
-          missingAspects={missingAspects}
-          isLoading={isLoadingAspects}
-        />
+        {!selectedCategory?.categoryId && !isLoadingAspects ? (
+          <View style={styles.section}>
+            <Text style={styles.conditionHint}>
+              Select a category to see item specifics
+            </Text>
+          </View>
+        ) : (
+          <ItemSpecificsEditor
+            metadata={itemAspectsMetadata}
+            values={itemSpecifics}
+            onChange={handleItemSpecificChange}
+            missingAspects={missingAspects}
+            isLoading={isLoadingAspects}
+          />
+        )}
 
         {/* Package Weight */}
         <WeightInput
@@ -703,7 +781,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
               !selectedCategory?.categoryId && styles.conditionSelectorDisabled,
             ]}
             onPress={() => setShowConditionPicker(true)}
-            disabled={isUpdatingCondition || isLoadingConditions}
+            disabled={!selectedCategory?.categoryId || isUpdatingCondition || isLoadingConditions}
           >
             <Text
               style={[

@@ -9,22 +9,30 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { suggestCategory, type CategorySuggestion } from '../lib/api';
+import { suggestCategory, type CategorySuggestion, type AiCategorySuggestion } from '../lib/api';
 import { TEMP_USER_ID } from '../lib/constants';
 
 interface CategoryPickerProps {
   value?: {
     categoryId: string;
     categoryName: string;
+    categoryTreeId: string;
   };
   suggestedQuery?: string;
-  onChange: (category: { categoryId: string; categoryName: string }) => void;
+  onChange: (category: { categoryId: string; categoryName: string; categoryTreeId: string }) => void;
+  aiSuggestion?: {
+    primary: AiCategorySuggestion;
+    alternatives: AiCategorySuggestion[];
+  };
+  isLoadingAi?: boolean;
 }
 
 export default function CategoryPicker({
   value,
   suggestedQuery,
   onChange,
+  aiSuggestion,
+  isLoadingAi,
 }: CategoryPickerProps) {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,8 +71,29 @@ export default function CategoryPicker({
     onChange({
       categoryId: category.categoryId,
       categoryName: category.categoryName,
+      categoryTreeId: '0', // EBAY_US default, v1 single-marketplace
     });
     setIsModalVisible(false);
+  };
+
+  const handleSelectAiAlternative = (alt: AiCategorySuggestion) => {
+    onChange({
+      categoryId: alt.categoryId,
+      categoryName: alt.categoryName,
+      categoryTreeId: alt.categoryTreeId,
+    });
+  };
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return '#34C759';
+    if (confidence >= 0.5) return '#FF9500';
+    return '#FF3B30';
+  };
+
+  const getConfidenceLabel = (confidence: number) => {
+    if (confidence >= 0.8) return 'High';
+    if (confidence >= 0.5) return 'Medium';
+    return 'Low';
   };
 
   const getRelevanceColor = (relevance: string) => {
@@ -108,29 +137,94 @@ export default function CategoryPicker({
     </TouchableOpacity>
   );
 
+  // AI-first display mode
+  const showAiMode = !!aiSuggestion || isLoadingAi;
+
   return (
     <>
       {/* Category Display */}
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.label}>Category</Text>
-          <TouchableOpacity onPress={() => setIsModalVisible(true)}>
-            <Text style={styles.changeButton}>Change</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity
-          style={styles.valueContainer}
-          onPress={() => setIsModalVisible(true)}
-        >
-          {value ? (
-            <>
-              <Text style={styles.categoryValue}>{value.categoryName}</Text>
-              <Text style={styles.categoryId}>ID: {value.categoryId}</Text>
-            </>
-          ) : (
-            <Text style={styles.placeholder}>Select a category...</Text>
+          {!isLoadingAi && (
+            <TouchableOpacity onPress={() => setIsModalVisible(true)}>
+              <Text style={styles.changeButton}>
+                {showAiMode ? 'Change category' : 'Change'}
+              </Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
+
+        {isLoadingAi ? (
+          <View style={styles.aiLoadingContainer}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={styles.aiLoadingText}>AI selecting category...</Text>
+          </View>
+        ) : aiSuggestion && value ? (
+          <View>
+            {/* Primary AI selection */}
+            <View style={styles.aiPrimaryRow}>
+              <View style={styles.aiPrimaryInfo}>
+                <Text style={styles.categoryValue}>{value.categoryName}</Text>
+                <Text style={styles.categoryId}>ID: {value.categoryId}</Text>
+              </View>
+              <View
+                style={[
+                  styles.confidenceBadge,
+                  { backgroundColor: getConfidenceColor(aiSuggestion.primary.confidence) },
+                ]}
+              >
+                <Text style={styles.confidenceText}>
+                  {getConfidenceLabel(aiSuggestion.primary.confidence)}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.aiReason}>{aiSuggestion.primary.reason}</Text>
+
+            {/* Alternatives */}
+            {aiSuggestion.alternatives.length > 0 && (
+              <View style={styles.alternativesContainer}>
+                <Text style={styles.alternativesLabel}>Other options:</Text>
+                {aiSuggestion.alternatives.map((alt) => (
+                  <TouchableOpacity
+                    key={alt.categoryId}
+                    style={[
+                      styles.alternativeItem,
+                      value.categoryId === alt.categoryId && styles.alternativeItemSelected,
+                    ]}
+                    onPress={() => handleSelectAiAlternative(alt)}
+                  >
+                    <Text style={styles.alternativeName}>{alt.categoryName}</Text>
+                    <View
+                      style={[
+                        styles.confidenceBadgeSmall,
+                        { backgroundColor: getConfidenceColor(alt.confidence) },
+                      ]}
+                    >
+                      <Text style={styles.confidenceTextSmall}>
+                        {Math.round(alt.confidence * 100)}%
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.valueContainer}
+            onPress={() => setIsModalVisible(true)}
+          >
+            {value ? (
+              <>
+                <Text style={styles.categoryValue}>{value.categoryName}</Text>
+                <Text style={styles.categoryId}>ID: {value.categoryId}</Text>
+              </>
+            ) : (
+              <Text style={styles.placeholder}>Select a category...</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Category Selection Modal */}
@@ -254,6 +348,85 @@ const styles = StyleSheet.create({
   placeholder: {
     fontSize: 15,
     color: '#999',
+  },
+  // AI mode styles
+  aiLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  aiLoadingText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  aiPrimaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 4,
+  },
+  aiPrimaryInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  aiReason: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  alternativesContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  alternativesLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 8,
+  },
+  alternativeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginBottom: 4,
+    backgroundColor: '#f9f9f9',
+  },
+  alternativeItemSelected: {
+    backgroundColor: '#E8F4FD',
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  alternativeName: {
+    fontSize: 13,
+    color: '#555',
+    flex: 1,
+  },
+  confidenceBadgeSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  confidenceTextSmall: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
   },
   // Modal Styles
   modalContainer: {

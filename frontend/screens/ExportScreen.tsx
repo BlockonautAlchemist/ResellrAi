@@ -459,15 +459,24 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                   </TouchableOpacity>
                 </View>
 
+                {/* Missing Item Specifics Warning */}
+                {missingItemSpecifics.length > 0 && (
+                  <View style={styles.warningContainer}>
+                    <Text style={styles.warningText}>
+                      {missingItemSpecifics.length} required item specific{missingItemSpecifics.length > 1 ? 's' : ''} still missing. Go back to Preview to fill them in.
+                    </Text>
+                  </View>
+                )}
+
                 {/* Publish Button */}
                 <TouchableOpacity
                   style={[
                     styles.publishButton,
-                    (!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId) &&
+                    (!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0) &&
                       styles.publishButtonDisabled,
                   ]}
                   onPress={handlePublishToEbay}
-                  disabled={!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId}
+                  disabled={!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0}
                 >
                   <Text style={styles.publishButtonText}>Publish to eBay - ${price}</Text>
                 </TouchableOpacity>

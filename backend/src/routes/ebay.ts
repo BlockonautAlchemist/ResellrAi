@@ -31,6 +31,9 @@ import {
   generateTraceId,
 } from '../services/ebay/index.js';
 import { suggestItemSpecifics } from '../services/ebay/aspects-suggester.js';
+import { suggestCategoryFromListing } from '../services/ebay/category-suggester.js';
+import { autoFillRequiredItemSpecifics } from '../services/ebay/ai-autofill.js';
+import { getListing } from '../services/listings-db.js';
 import {
   EbayConnectedAccountSchema,
   EbayCompsQuerySchema,
@@ -43,6 +46,10 @@ import {
   SuggestionInputSchema,
   SuggestionResultSchema,
   ItemAspectsMetadataSchema,
+  AiCategorySuggestRequestSchema,
+  AiCategorySuggestResponseSchema,
+  AiAutofillRequestSchema,
+  AiAutofillResponseSchema,
   getCompsSourceMessage,
 } from '../types/ebay-schemas.js';
 
@@ -936,6 +943,200 @@ router.post('/category/:categoryId/suggest_item_specifics', async (req: Request,
 });
 
 // =============================================================================
+// AI CATEGORY SUGGESTION + AUTOFILL ROUTES
+// =============================================================================
+
+/**
+ * POST /api/v1/ebay/ai/category-suggest
+ * AI-powered category suggestion using vision output + title
+ *
+ * Body:
+ * - listingId: string (fetch vision output + title from DB)
+ * OR
+ * - title: string, description?: string
+ *
+ * Response:
+ * - primary: { categoryId, categoryName, categoryTreeId, confidence, reason }
+ * - alternatives: [{ categoryId, categoryName, categoryTreeId, confidence, reason }]
+ */
+router.post('/ai/category-suggest', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
+    // Validate request body
+    const parseResult = AiCategorySuggestRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Either listingId or title is required',
+          details: parseResult.error.errors,
+        },
+      });
+      return;
+    }
+
+    const { listingId, title, description } = parseResult.data;
+
+    console.log(`[eBay Routes] AI category suggest { listingId: ${listingId || 'none'}, title: ${title ? title.substring(0, 40) + '...' : 'none'} }`);
+
+    const result = await suggestCategoryFromListing(
+      { listingId, title, description },
+      userId
+    );
+
+    // Validate response
+    const validated = AiCategorySuggestResponseSchema.parse(result);
+    res.json(validated);
+  } catch (error) {
+    console.error('[eBay Routes] AI category suggest error:', error);
+    res.status(500).json({
+      error: {
+        code: 'AI_CATEGORY_SUGGEST_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to suggest category',
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/v1/ebay/ai/autofill-specifics
+ * AI-powered item specifics autofill using LLM
+ *
+ * Body:
+ * - listingId: string (fetch title, description, visionOutput from DB)
+ * - categoryId: string
+ * - categoryTreeId?: string (default: '0')
+ * - currentItemSpecifics?: Record<string, string>
+ *
+ * Response:
+ * - itemSpecifics: Record<string, string>
+ * - filledByAi: string[]
+ * - stillMissing: string[]
+ * - aspectsMetadata: { requiredAspects, recommendedAspects }
+ */
+router.post('/ai/autofill-specifics', async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({
+        error: 'ebay_not_connected',
+        message: 'User authentication required',
+        needs_reauth: true,
+      });
+      return;
+    }
+
+    // Validate request body
+    const parseResult = AiAutofillRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parseResult.error.errors,
+        },
+      });
+      return;
+    }
+
+    const { listingId, categoryId, categoryTreeId, currentItemSpecifics } = parseResult.data;
+
+    console.log(`[eBay Routes] AI autofill specifics { listingId: ${listingId}, categoryId: ${categoryId} }`);
+
+    // Fetch listing from DB
+    const listing = await getListing(listingId);
+    if (!listing) {
+      res.status(404).json({
+        error: {
+          code: 'LISTING_NOT_FOUND',
+          message: `Listing ${listingId} not found`,
+        },
+      });
+      return;
+    }
+
+    // Get access token for Taxonomy API
+    const authService = getEbayAuthService();
+    let accessToken: string;
+    try {
+      accessToken = await authService.getAccessToken(userId);
+    } catch (tokenError) {
+      const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
+      if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+        res.status(401).json({
+          error: 'ebay_not_connected',
+          message: 'Please connect your eBay account',
+          needs_reauth: true,
+        });
+        return;
+      }
+      throw tokenError;
+    }
+
+    // Fetch aspects metadata for the category
+    const aspectsService = getEbayAspectsService();
+    const aspectsMetadata = await aspectsService.getItemAspectsForCategory(categoryId, 'EBAY_US', accessToken);
+
+    // Find category name from metadata or listing
+    const categoryName = listing.listing_draft?.category?.value || `Category ${categoryId}`;
+
+    // Call AI autofill
+    const autofillResult = await autoFillRequiredItemSpecifics({
+      categoryId,
+      categoryName,
+      requiredAspects: aspectsMetadata.requiredAspects,
+      listing: {
+        title: listing.listing_draft?.title?.value || '',
+        description: listing.listing_draft?.description?.value || '',
+      },
+      visionOutput: listing.vision_output || undefined,
+      currentItemSpecifics,
+    });
+
+    const response = {
+      ...autofillResult,
+      aspectsMetadata: {
+        requiredAspects: aspectsMetadata.requiredAspects,
+        recommendedAspects: aspectsMetadata.recommendedAspects,
+      },
+    };
+
+    // Validate response
+    const validated = AiAutofillResponseSchema.parse(response);
+    res.json(validated);
+  } catch (error) {
+    console.error('[eBay Routes] AI autofill specifics error:', error);
+
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid response data',
+          details: error.errors,
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'AI_AUTOFILL_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to autofill item specifics',
+      },
+    });
+  }
+});
+
+// =============================================================================
 // POLICY ROUTES
 // =============================================================================
 
@@ -1405,14 +1606,33 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
     const result = await listingService.publishFixedPriceListing(userId, draft, policies);
 
     // Validate response (traceId is now included in the result)
-    const validated = EbayPublishResultSchema.parse(result);
+    const parseResult = EbayPublishResultSchema.safeParse(result);
 
-    if (validated.success) {
-      console.log(`[eBay Routes] Publish successful { traceId: ${traceId}, listingId: ${validated.listing_id} }`);
-      res.json(validated);
+    if (parseResult.success) {
+      const validated = parseResult.data;
+      if (validated.success) {
+        console.log(`[eBay Routes] Publish successful { traceId: ${traceId}, listingId: ${validated.listing_id} }`);
+        res.json(validated);
+      } else {
+        console.log(`[eBay Routes] Publish failed { traceId: ${traceId}, error: ${validated.error?.code} }`);
+        res.status(400).json(validated);
+      }
     } else {
-      console.log(`[eBay Routes] Publish failed { traceId: ${traceId}, error: ${validated.error?.code} }`);
-      res.status(400).json(validated);
+      // Schema validation failed — check if underlying publish actually succeeded
+      console.warn(`[eBay Routes] Result schema validation failed { traceId: ${traceId} }:`, parseResult.error.errors);
+      if (result && (result as any).success === true) {
+        console.warn(`[eBay Routes] Returning raw success result despite schema mismatch { traceId: ${traceId} }`);
+        res.json(result);
+      } else {
+        res.status(400).json({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid publish result data',
+            details: parseResult.error.errors,
+          },
+          traceId,
+        });
+      }
     }
   } catch (error) {
     console.error(`[eBay Routes] Publish error { traceId: ${traceId} }:`, error);

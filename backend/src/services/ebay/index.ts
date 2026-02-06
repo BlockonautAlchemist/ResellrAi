@@ -48,6 +48,21 @@ export {
   type SuggestionResult,
 } from './aspects-suggester.js';
 
+// AI category suggester
+export {
+  suggestCategoryFromListing,
+  type AiCategorySuggestion,
+  type AiCategorySuggestResult,
+  type SuggestCategoryInput,
+} from './category-suggester.js';
+
+// AI autofill item specifics
+export {
+  autoFillRequiredItemSpecifics,
+  type AutofillInput,
+  type AutofillResult,
+} from './ai-autofill.js';
+
 // API client
 export { EbayApiClient, getEbayClient, isEbayAvailable, type EbayTokenResponse } from './client.js';
 

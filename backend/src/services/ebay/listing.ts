@@ -37,12 +37,12 @@ import {
 
 interface EbayCreateOfferResponse {
   offerId: string;
-  warnings?: Array<{ errorId: string; message: string }>;
+  warnings?: Array<{ errorId: string | number; message: string }>;
 }
 
 interface EbayPublishOfferResponse {
   listingId: string;
-  warnings?: Array<{ errorId: string; message: string }>;
+  warnings?: Array<{ errorId: string | number; message: string }>;
 }
 
 interface EbayErrorResponse {
@@ -603,7 +603,7 @@ export class EbayListingService {
           success: true,
           offerId: response.data.offerId,
           warnings: response.data.warnings?.map((w) => ({
-            code: w.errorId,
+            code: String(w.errorId),
             message: w.message,
           })),
         };
@@ -664,7 +664,7 @@ export class EbayListingService {
           success: true,
           listingId: response.data.listingId,
           warnings: response.data.warnings?.map((w) => ({
-            code: w.errorId,
+            code: String(w.errorId),
             message: w.message,
           })),
         };
@@ -831,7 +831,7 @@ export class EbayListingService {
           success: true,
           offerId: response.data.offerId,
           warnings: response.data.warnings?.map((w) => ({
-            code: w.errorId,
+            code: String(w.errorId),
             message: w.message,
           })),
         };
@@ -971,7 +971,7 @@ export class EbayListingService {
           success: true,
           listingId: response.data.listingId,
           warnings: response.data.warnings?.map((w) => ({
-            code: w.errorId,
+            code: String(w.errorId),
             message: w.message,
           })),
         };
