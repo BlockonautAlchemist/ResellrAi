@@ -12,7 +12,9 @@ import type {
   WeightSuggestion,
   DimensionsSuggestion,
   WeightUnit,
+  PackagingType,
 } from '../lib/api';
+import { PACKAGING_TYPE_LABELS } from '../lib/api';
 
 interface Props {
   weight: PackageWeight | null;
@@ -23,6 +25,10 @@ interface Props {
   onDimensionsChange: (dimensions: PackageDimensions) => void;
   weightError?: string | null;
   dimensionsError?: string | null;
+  packagingType?: PackagingType | null;
+  confidence?: number | null;
+  userOverride?: boolean;
+  onResetToSuggested?: () => void;
 }
 
 /**
@@ -55,6 +61,10 @@ export default function WeightInput({
   onDimensionsChange,
   weightError,
   dimensionsError,
+  packagingType,
+  confidence,
+  userOverride,
+  onResetToSuggested,
 }: Props) {
   const currentWeightUnit = weight?.unit || 'OUNCE';
   const currentWeightValue = weight?.value || 0;
@@ -126,13 +136,32 @@ export default function WeightInput({
         )}
       </View>
 
-      {/* Suggested Values Banner */}
-      {(suggestedWeight || suggestedDimensions) && hasNoValues && (
+      {/* Packaging Type + Confidence Badge */}
+      {packagingType && (
+        <View style={styles.packagingInfo}>
+          <View style={styles.packagingBadge}>
+            <Text style={styles.packagingBadgeText}>
+              {PACKAGING_TYPE_LABELS[packagingType]}
+            </Text>
+          </View>
+          {confidence != null && (
+            <Text style={[
+              styles.confidenceText,
+              { color: confidence >= 0.7 ? '#34C759' : confidence >= 0.4 ? '#FF9500' : '#FF3B30' },
+            ]}>
+              {Math.round(confidence * 100)}% confidence
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Suggestion Banner: shown when no values and not auto-applied */}
+      {(suggestedWeight || suggestedDimensions) && hasNoValues && !packagingType && (
         <TouchableOpacity
           style={styles.suggestionBanner}
           onPress={handleUseSuggestions}
         >
-          <Text style={styles.suggestionTitle}>Suggested values based on item type:</Text>
+          <Text style={styles.suggestionTitle}>Suggested values:</Text>
           {suggestedWeight && (
             <Text style={styles.suggestionValue}>
               Weight: {formatWeightDisplay(suggestedWeight.value, suggestedWeight.unit)}
@@ -148,6 +177,15 @@ export default function WeightInput({
           </Text>
           <Text style={styles.useSuggestionText}>Tap to use these values</Text>
         </TouchableOpacity>
+      )}
+
+      {/* Currently using AI suggestion indicator */}
+      {!userOverride && packagingType && !hasNoValues && (
+        <View style={styles.aiAppliedBanner}>
+          <Text style={styles.aiAppliedText}>
+            Using AI-suggested values ({suggestedWeight?.source || 'AI estimate'})
+          </Text>
+        </View>
       )}
 
       {/* Weight Input */}
@@ -256,6 +294,13 @@ export default function WeightInput({
           </Text>
         )}
       </View>
+
+      {/* Reset to AI suggested button */}
+      {userOverride && onResetToSuggested && (
+        <TouchableOpacity style={styles.resetButton} onPress={onResetToSuggested}>
+          <Text style={styles.resetButtonText}>Reset to AI suggested</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -411,5 +456,48 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  packagingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  packagingBadge: {
+    backgroundColor: '#E3F2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  packagingBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  confidenceText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  aiAppliedBanner: {
+    backgroundColor: '#E8F8EC',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  aiAppliedText: {
+    fontSize: 12,
+    color: '#2D7A3A',
+    fontStyle: 'italic',
+  },
+  resetButton: {
+    backgroundColor: '#F0F0F0',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
   },
 });

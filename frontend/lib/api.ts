@@ -39,6 +39,27 @@ export interface DetectedAttribute {
   confidence: number;
 }
 
+export type PackagingType = 'poly_mailer' | 'small_box' | 'medium_box' | 'large_box' | 'tube' | 'rigid_mailer';
+
+export interface ShippingEstimate {
+  packagingType: PackagingType;
+  itemDimensionsIn: { l: number; w: number; h: number };
+  itemWeightOz: number;
+  packageDimensionsIn: { l: number; w: number; h: number };
+  packageWeightOz: number;
+  confidence: number;
+  assumptions: string[];
+}
+
+export const PACKAGING_TYPE_LABELS: Record<PackagingType, string> = {
+  poly_mailer: 'Poly Mailer',
+  small_box: 'Small Box',
+  medium_box: 'Medium Box',
+  large_box: 'Large Box',
+  tube: 'Tube',
+  rigid_mailer: 'Rigid Mailer',
+};
+
 export interface VisionOutput {
   itemId: string;
   detectedCategory: ConfidenceValue;
@@ -46,6 +67,7 @@ export interface VisionOutput {
   detectedColor: ConfidenceValue;
   detectedCondition?: ConfidenceValue;
   detectedAttributes: DetectedAttribute[];
+  shippingEstimate?: ShippingEstimate;
   processingTimeMs: number;
 }
 

@@ -63,6 +63,29 @@ export const DetectedAttributeSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+export const PackagingTypeEnum = z.enum([
+  'poly_mailer', 'small_box', 'medium_box', 'large_box', 'tube', 'rigid_mailer',
+]);
+
+export const DimensionsEstimateSchema = z.object({
+  l: z.number().min(0.5).max(120),
+  w: z.number().min(0.5).max(120),
+  h: z.number().min(0.5).max(120),
+});
+
+export const ShippingEstimateSchema = z.object({
+  packagingType: PackagingTypeEnum,
+  itemDimensionsIn: DimensionsEstimateSchema,
+  itemWeightOz: z.number().min(0.1).max(2400),
+  packageDimensionsIn: DimensionsEstimateSchema,
+  packageWeightOz: z.number().min(0.1).max(2400),
+  confidence: z.number().min(0).max(1),
+  assumptions: z.array(z.string()),
+});
+
+export type ShippingEstimate = z.infer<typeof ShippingEstimateSchema>;
+export type PackagingType = z.infer<typeof PackagingTypeEnum>;
+
 export const VisionOutputSchema = z.object({
   itemId: z.string().uuid(),
   detectedCategory: ConfidenceValueSchema,
@@ -71,6 +94,7 @@ export const VisionOutputSchema = z.object({
   detectedCondition: ConfidenceValueSchema.optional(),
   detectedAttributes: z.array(DetectedAttributeSchema),
   rawLabels: z.array(z.string()).optional(),
+  shippingEstimate: ShippingEstimateSchema.optional(),
   processingTimeMs: z.number(),
 });
 

@@ -8,8 +8,8 @@
  */
 
 import { analyzeImage } from './openrouter.js';
-import type { ItemInput, VisionOutput, DetectedAttribute } from '../types/schemas.js';
-import { VisionOutputSchema, CONFIDENCE_THRESHOLDS } from '../types/schemas.js';
+import type { ItemInput, VisionOutput, DetectedAttribute, ShippingEstimate } from '../types/schemas.js';
+import { VisionOutputSchema, ShippingEstimateSchema, CONFIDENCE_THRESHOLDS } from '../types/schemas.js';
 
 /**
  * System prompt for vision analysis
@@ -29,7 +29,15 @@ Confidence scoring:
 - 0.9-1.0: Clearly visible, no doubt
 - 0.7-0.89: Likely correct but some uncertainty
 - 0.5-0.69: Best guess, needs user verification
-- Below 0.5: Cannot determine reliably`;
+- Below 0.5: Cannot determine reliably
+
+SHIPPING ESTIMATION RULES:
+- Estimate item weight and dimensions based on what you see
+- Choose packagingType: poly_mailer for soft goods (clothing, fabric), small_box for items < 12x10x6, medium_box for items < 18x14x8, large_box for larger items, tube for posters/prints, rigid_mailer for flat rigid items
+- packageWeightOz must include packaging material weight (add 2-6 oz depending on packaging type)
+- Sort dimensions so L >= W >= H
+- Prefer slight overestimates to avoid shipping label underruns
+- Set confidence below 0.5 when item size is ambiguous or hard to judge from the image`;
 
 /**
  * User prompt template for vision analysis
@@ -46,10 +54,69 @@ const VISION_USER_PROMPT = `Analyze this item image and return JSON with this ex
     { "key": "Material", "value": "detected material", "confidence": 0.0-1.0 },
     { "key": "Style", "value": "style description", "confidence": 0.0-1.0 }
   ],
-  "rawLabels": ["list", "of", "detected", "labels"]
+  "rawLabels": ["list", "of", "detected", "labels"],
+  "shippingEstimate": {
+    "packagingType": "poly_mailer|small_box|medium_box|large_box|tube|rigid_mailer",
+    "itemDimensionsIn": { "l": 0, "w": 0, "h": 0 },
+    "itemWeightOz": 0,
+    "packageDimensionsIn": { "l": 0, "w": 0, "h": 0 },
+    "packageWeightOz": 0,
+    "confidence": 0.0,
+    "assumptions": ["list of assumptions made"]
+  }
 }
 
-Include only attributes you can actually detect from the image. Be specific and accurate.`;
+Include only attributes you can actually detect from the image. Be specific and accurate.
+Always include a shippingEstimate with your best guess for weight and dimensions.`;
+
+/**
+ * Normalize and validate a shipping estimate from the vision model.
+ * Rounds values, clamps to valid ranges, sorts dims descending, and validates with Zod.
+ * Returns null on failure (graceful degradation).
+ */
+function normalizeShippingEstimate(raw: Record<string, unknown>): ShippingEstimate | null {
+  try {
+    const roundWeight = (v: number) => Math.round(v);
+    const roundDim = (v: number) => Math.round(v * 2) / 2; // nearest 0.5
+    const clampWeight = (v: number) => Math.max(1, Math.min(2400, v));
+    const clampDim = (v: number) => Math.max(1, Math.min(48, v));
+
+    const sortDims = (dims: { l: number; w: number; h: number }) => {
+      const sorted = [dims.l, dims.w, dims.h].sort((a, b) => b - a);
+      return { l: sorted[0], w: sorted[1], h: sorted[2] };
+    };
+
+    const normDims = (dims: Record<string, unknown>) => {
+      const raw = {
+        l: clampDim(roundDim(Number(dims?.l) || 1)),
+        w: clampDim(roundDim(Number(dims?.w) || 1)),
+        h: clampDim(roundDim(Number(dims?.h) || 1)),
+      };
+      return sortDims(raw);
+    };
+
+    const normalized = {
+      packagingType: raw.packagingType,
+      itemDimensionsIn: normDims((raw.itemDimensionsIn as Record<string, unknown>) || {}),
+      itemWeightOz: clampWeight(roundWeight(Number(raw.itemWeightOz) || 1)),
+      packageDimensionsIn: normDims((raw.packageDimensionsIn as Record<string, unknown>) || {}),
+      packageWeightOz: clampWeight(roundWeight(Number(raw.packageWeightOz) || 1)),
+      confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
+      assumptions: Array.isArray(raw.assumptions) ? raw.assumptions.map(String) : [],
+    };
+
+    const result = ShippingEstimateSchema.safeParse(normalized);
+    if (result.success) {
+      return result.data;
+    }
+
+    console.warn('ShippingEstimate validation failed:', result.error.issues);
+    return null;
+  } catch (err) {
+    console.warn('normalizeShippingEstimate error:', err);
+    return null;
+  }
+}
 
 /**
  * Parse the raw AI response into a structured VisionOutput
@@ -107,6 +174,14 @@ function parseVisionResponse(response: string, itemId: string, processingTimeMs:
     // Add raw labels if present
     if (Array.isArray(parsed.rawLabels)) {
       visionOutput.rawLabels = parsed.rawLabels;
+    }
+
+    // Add shipping estimate if present
+    if (parsed.shippingEstimate) {
+      const normalized = normalizeShippingEstimate(parsed.shippingEstimate);
+      if (normalized) {
+        visionOutput.shippingEstimate = normalized;
+      }
     }
 
     return visionOutput;

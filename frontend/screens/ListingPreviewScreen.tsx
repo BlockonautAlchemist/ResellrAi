@@ -26,6 +26,7 @@ import {
   type WeightSuggestion,
   type DimensionsSuggestion,
   type AiCategorySuggestResponse,
+  PACKAGING_TYPE_LABELS,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
 import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
@@ -116,6 +117,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [packageDimensions, setPackageDimensions] = useState<PackageDimensions | null>(null);
   const [suggestedWeight, setSuggestedWeight] = useState<WeightSuggestion | null>(null);
   const [suggestedDimensions, setSuggestedDimensions] = useState<DimensionsSuggestion | null>(null);
+  const [userPackageOverride, setUserPackageOverride] = useState(false);
 
   const pricing = initialListing?.pricingSuggestion;
 
@@ -182,140 +184,32 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     return () => { isCancelled = true; };
   }, [initialListing?.itemId]);
 
-  // Calculate suggested weight and dimensions from AI-detected attributes
+  // Apply shipping estimate from AI vision model (or fallback defaults)
   useEffect(() => {
-    if (!initialListing?.visionOutput?.detectedAttributes) {
-      // Set defaults even without AI attributes
-      setSuggestedWeight({
-        value: 16, // 1 lb default
-        unit: 'OUNCE',
-        confidence: 'low',
-        source: 'Default weight (1 lb)',
-      });
+    const estimate = initialListing?.visionOutput?.shippingEstimate;
+    if (estimate) {
+      const confidenceLevel = estimate.confidence >= 0.7 ? 'high' : estimate.confidence >= 0.4 ? 'medium' : 'low';
+      const source = `AI estimate (${PACKAGING_TYPE_LABELS[estimate.packagingType]})`;
+
+      setSuggestedWeight({ value: estimate.packageWeightOz, unit: 'OUNCE', confidence: confidenceLevel, source });
       setSuggestedDimensions({
-        length: 12,
-        width: 10,
-        height: 2,
-        unit: 'INCH',
-        confidence: 'low',
-        source: 'Default dimensions',
+        length: estimate.packageDimensionsIn.l, width: estimate.packageDimensionsIn.w,
+        height: estimate.packageDimensionsIn.h, unit: 'INCH', confidence: confidenceLevel, source,
       });
-      return;
-    }
 
-    const aiAttributes = initialListing.visionOutput.detectedAttributes;
-
-    // Weight defaults table (in ounces)
-    const APPAREL_WEIGHTS: Record<string, number> = {
-      't-shirt': 8, 'tee': 8, 'tank top': 6, 'tank': 6,
-      'long sleeve': 10, 'polo': 10, 'blouse': 10,
-      'hoodie': 24, 'sweatshirt': 24, 'sweater': 16,
-      'jeans': 28, 'denim': 28, 'pants': 24, 'shorts': 12,
-      'dress': 16, 'skirt': 12,
-      'shoes': 32, 'sneakers': 32, 'boots': 48,
-      'jacket': 32, 'coat': 48, 'blazer': 24,
-    };
-
-    // Dimensions defaults table (L x W x H in inches) - folded/packaged dimensions
-    const APPAREL_DIMENSIONS: Record<string, [number, number, number]> = {
-      't-shirt': [10, 8, 1], 'tee': [10, 8, 1], 'tank top': [10, 8, 1], 'tank': [10, 8, 1],
-      'long sleeve': [12, 10, 2], 'polo': [12, 10, 2], 'blouse': [12, 10, 1],
-      'hoodie': [14, 12, 4], 'sweatshirt': [14, 12, 4], 'sweater': [14, 12, 3],
-      'jeans': [14, 10, 3], 'denim': [14, 10, 3], 'pants': [14, 10, 3], 'shorts': [12, 10, 2],
-      'dress': [14, 10, 2], 'skirt': [12, 10, 2],
-      'shoes': [14, 10, 5], 'sneakers': [14, 10, 5], 'boots': [16, 12, 8],
-      'jacket': [16, 14, 4], 'coat': [18, 14, 6], 'blazer': [16, 14, 3],
-    };
-
-    // Keys to check for apparel type
-    const typeKeys = ['apparelType', 'productType', 'type', 'category', 'garmentType', 'itemType'];
-
-    // Find apparel type
-    let apparelType: string | null = null;
-    let matchedAttr: { key: string; value: string; confidence: number } | null = null;
-
-    for (const attr of aiAttributes) {
-      const keyLower = attr.key.toLowerCase();
-      if (typeKeys.some(k => keyLower.includes(k.toLowerCase()))) {
-        apparelType = attr.value.toLowerCase();
-        matchedAttr = attr;
-        break;
-      }
-    }
-
-    // If no type found, try to find any attribute value that matches
-    if (!apparelType) {
-      for (const attr of aiAttributes) {
-        const valueLower = attr.value.toLowerCase();
-        if (APPAREL_WEIGHTS[valueLower]) {
-          apparelType = valueLower;
-          matchedAttr = attr;
-          break;
-        }
-      }
-    }
-
-    // Look up weight and dimensions
-    if (apparelType) {
-      let weight = APPAREL_WEIGHTS[apparelType];
-      let dims = APPAREL_DIMENSIONS[apparelType];
-
-      // Try partial match
-      if (!weight || !dims) {
-        for (const [key, oz] of Object.entries(APPAREL_WEIGHTS)) {
-          if (apparelType.includes(key) || key.includes(apparelType)) {
-            weight = weight || oz;
-            dims = dims || APPAREL_DIMENSIONS[key];
-            break;
-          }
-        }
-      }
-
-      const confidence = matchedAttr?.confidence
-        ? matchedAttr.confidence >= 0.8 ? 'high' : matchedAttr.confidence >= 0.5 ? 'medium' : 'low'
-        : 'medium';
-
-      if (weight) {
-        setSuggestedWeight({
-          value: weight,
-          unit: 'OUNCE',
-          confidence: confidence as 'high' | 'medium' | 'low',
-          source: `Based on detected ${matchedAttr?.key || 'type'}: ${apparelType}`,
+      if (!userPackageOverride) {
+        setPackageWeight({ value: estimate.packageWeightOz, unit: 'OUNCE' });
+        setPackageDimensions({
+          length: estimate.packageDimensionsIn.l, width: estimate.packageDimensionsIn.w,
+          height: estimate.packageDimensionsIn.h, unit: 'INCH',
         });
       }
-
-      if (dims) {
-        setSuggestedDimensions({
-          length: dims[0],
-          width: dims[1],
-          height: dims[2],
-          unit: 'INCH',
-          confidence: confidence as 'high' | 'medium' | 'low',
-          source: `Based on detected ${matchedAttr?.key || 'type'}: ${apparelType}`,
-        });
-      }
-
-      if (weight || dims) {
-        return;
-      }
+    } else {
+      // Fallback defaults
+      setSuggestedWeight({ value: 16, unit: 'OUNCE', confidence: 'low', source: 'Default — adjust if needed' });
+      setSuggestedDimensions({ length: 12, width: 10, height: 2, unit: 'INCH', confidence: 'low', source: 'Default — adjust if needed' });
     }
-
-    // Default fallback
-    setSuggestedWeight({
-      value: 16, // 1 lb default
-      unit: 'OUNCE',
-      confidence: 'low',
-      source: 'Default weight (1 lb)',
-    });
-    setSuggestedDimensions({
-      length: 12,
-      width: 10,
-      height: 2,
-      unit: 'INCH',
-      confidence: 'low',
-      source: 'Default dimensions',
-    });
-  }, [initialListing?.visionOutput?.detectedAttributes]);
+  }, [initialListing?.visionOutput?.shippingEstimate]);
 
   // Fetch valid conditions when category changes
   useEffect(() => {
@@ -488,6 +382,26 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     } else if (itemAspectsMetadata?.requiredAspects.some(a => a.name === key)) {
       // Add to missing if it's required and now empty
       setMissingAspects(prev => prev.includes(key) ? prev : [...prev, key]);
+    }
+  };
+
+  const handleWeightChange = (w: PackageWeight) => {
+    setPackageWeight(w);
+    setUserPackageOverride(true);
+  };
+  const handleDimensionsChange = (dims: PackageDimensions) => {
+    setPackageDimensions(dims);
+    setUserPackageOverride(true);
+  };
+  const handleResetToSuggested = () => {
+    setUserPackageOverride(false);
+    const estimate = initialListing?.visionOutput?.shippingEstimate;
+    if (estimate) {
+      setPackageWeight({ value: estimate.packageWeightOz, unit: 'OUNCE' });
+      setPackageDimensions({
+        length: estimate.packageDimensionsIn.l, width: estimate.packageDimensionsIn.w,
+        height: estimate.packageDimensionsIn.h, unit: 'INCH',
+      });
     }
   };
 
@@ -763,8 +677,12 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           dimensions={packageDimensions}
           suggestedWeight={suggestedWeight}
           suggestedDimensions={suggestedDimensions}
-          onWeightChange={setPackageWeight}
-          onDimensionsChange={setPackageDimensions}
+          onWeightChange={handleWeightChange}
+          onDimensionsChange={handleDimensionsChange}
+          packagingType={initialListing?.visionOutput?.shippingEstimate?.packagingType ?? null}
+          confidence={initialListing?.visionOutput?.shippingEstimate?.confidence ?? null}
+          userOverride={userPackageOverride}
+          onResetToSuggested={handleResetToSuggested}
         />
 
         {/* Condition */}
