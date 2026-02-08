@@ -1,5 +1,17 @@
 {
+	"private": true,
+  
+	"scripts": {
+	  "fe:install": "pnpm -C frontend install",
+	  "fe:start": "pnpm -C frontend exec expo start --host lan",
+	  "fe:start:clean": "pnpm -C frontend exec expo start --host lan -c",
+  
+	  "be:install": "pnpm -C backend install",
+	  "be:dev": "pnpm -C backend dev"
+	},
+  
 	"devDependencies": {
-		"expo": "^54.0.33"
+	  "expo": "^54.0.33"
 	}
-}
+  }
+  

@@ -13,7 +13,6 @@ import {
 import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, type EbayConnectionStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
-import { TEMP_USER_ID } from '../lib/constants';
 
 interface HomeScreenProps {
   navigation: any;
@@ -124,7 +123,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       setEbayAvailable(status.available && status.configured);
 
       // Then check per-user connection status
-      const connection = await getEbayConnection(TEMP_USER_ID);
+      const connection = await getEbayConnection();
       setEbayConnection(connection);
       console.log('[HomeScreen] eBay connection status:', connection);
     } catch (err) {
@@ -144,7 +143,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             text: 'Disconnect',
             style: 'destructive',
             onPress: async () => {
-              await disconnectEbay(TEMP_USER_ID);
+              await disconnectEbay();
               setEbayConnection({ connected: false });
             },
           },
@@ -155,7 +154,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
 
     try {
       setIsConnectingEbay(true);
-      const { auth_url } = await startEbayOAuth(TEMP_USER_ID);
+      const { auth_url } = await startEbayOAuth();
 
       // Validate the auth_url is an eBay authorization URL (not our backend callback)
       const isValidEbayAuthUrl =

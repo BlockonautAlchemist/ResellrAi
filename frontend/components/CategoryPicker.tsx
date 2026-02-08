@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { suggestCategory, type CategorySuggestion, type AiCategorySuggestion } from '../lib/api';
-import { TEMP_USER_ID } from '../lib/constants';
 
 interface CategoryPickerProps {
   value?: {
@@ -57,7 +56,7 @@ export default function CategoryPicker({
     setIsLoading(true);
     setError(null);
     try {
-      const result = await suggestCategory(query, TEMP_USER_ID);
+      const result = await suggestCategory(query);
       setSuggestions(result.suggestions);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load categories');

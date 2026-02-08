@@ -18,7 +18,6 @@ import {
   type CompsFilters,
   type GenerateListingResponse,
 } from '../lib/api';
-import { TEMP_USER_ID } from '../lib/constants';
 
 interface CompsScreenProps {
   navigation: any;
@@ -57,7 +56,7 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
         categoryId,
         condition,
       };
-      const result = await getEbayComps(query, TEMP_USER_ID, filters);
+      const result = await getEbayComps(query, filters);
       setCompsResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load comparables');

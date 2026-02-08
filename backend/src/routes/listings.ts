@@ -21,6 +21,8 @@ import {
   type Platform,
   type UserEdit,
 } from '../types/schemas.js';
+import { requireUsageLimit } from '../middleware/usage-limit.js';
+import { recordUsage } from '../services/usage.js';
 
 const router: RouterType = Router();
 
@@ -30,7 +32,7 @@ const router: RouterType = Router();
  * Generate a complete listing from photos.
  * This is the main endpoint that orchestrates the full pipeline.
  */
-router.post('/generate', async (req: Request, res: Response) => {
+router.post('/generate', requireUsageLimit('generate'), async (req: Request, res: Response) => {
   try {
     // Validate request
     const parseResult = GenerateListingRequestSchema.safeParse(req.body);
@@ -128,6 +130,12 @@ router.post('/generate', async (req: Request, res: Response) => {
 
     const totalTime = Date.now() - startTime;
     console.log(`[${itemId}] Generation complete in ${totalTime}ms`);
+
+    // Record usage (fire-and-forget)
+    const userKey = (req as any).userKey;
+    if (userKey) {
+      recordUsage(userKey, 'generate').catch(() => {});
+    }
 
     // Return complete result
     res.json({

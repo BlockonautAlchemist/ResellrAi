@@ -17,7 +17,6 @@ import {
   type SellerLocationProfile,
   type SaveSellerLocationRequest,
 } from '../lib/api';
-import { TEMP_USER_ID } from '../lib/constants';
 
 interface LocationModalProps {
   visible: boolean;
@@ -47,7 +46,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
     try {
       setIsLoading(true);
       setError(null);
-      const profile = await getSellerLocation(TEMP_USER_ID);
+      const profile = await getSellerLocation();
 
       if (profile) {
         setPostalCode(profile.postal_code || '');
@@ -91,7 +90,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
         locationData.address_line1 = addressLine1.trim();
       }
 
-      const profile = await saveSellerLocation(TEMP_USER_ID, locationData);
+      const profile = await saveSellerLocation(locationData);
       onSaved(profile);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to save location';

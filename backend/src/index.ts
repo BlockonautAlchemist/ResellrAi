@@ -5,6 +5,8 @@ import { env } from './config/env.js';
 import healthRouter from './routes/health.js';
 import listingsRouter from './routes/listings.js';
 import ebayRouter from './routes/ebay.js';
+import { getUserKey } from './middleware/usage-limit.js';
+import { checkUsage } from './services/usage.js';
 
 const app = express();
 
@@ -25,6 +27,21 @@ if (env.NODE_ENV !== 'production') {
 app.use('/health', healthRouter);
 app.use('/api/v1/listings', listingsRouter);
 app.use('/api/v1/ebay', ebayRouter);
+
+// Usage status endpoint
+app.get('/api/v1/usage/status', async (req, res) => {
+  const userKey = getUserKey(req);
+  if (!userKey) {
+    return res.status(400).json({ error: { code: 'MISSING_ANON_ID', message: 'x-anon-id header is required' } });
+  }
+  try {
+    const usage = await checkUsage(userKey, 'generate');
+    res.json(usage);
+  } catch (err) {
+    console.error('[UsageStatus] error:', err);
+    res.status(500).json({ error: 'Failed to check usage' });
+  }
+});
 
 // Root route
 app.get('/', (_req, res) => {

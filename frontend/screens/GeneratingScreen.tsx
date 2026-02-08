@@ -5,8 +5,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
-import { generateListing, type GenerateListingResponse } from '../lib/api';
+import { generateListing, UsageLimitError, type GenerateListingResponse } from '../lib/api';
 
 interface GeneratingScreenProps {
   navigation: any;
@@ -31,6 +32,7 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
   const { photos, platform, userHints } = route.params;
   const [currentStep, setCurrentStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [limitError, setLimitError] = useState<UsageLimitError | null>(null);
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
 
@@ -68,8 +70,14 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
       navigation.replace('Preview', { listing: result });
     } catch (err) {
       console.error('Generation failed:', err);
+
+      if (err instanceof UsageLimitError) {
+        setLimitError(err);
+        return;
+      }
+
       setError(err instanceof Error ? err.message : 'Generation failed');
-      
+
       Alert.alert(
         'Generation Failed',
         err instanceof Error ? err.message : 'An error occurred',
@@ -85,6 +93,36 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
     const seconds = Math.floor(ms / 1000);
     return `${seconds}s`;
   };
+
+  if (limitError) {
+    const isDaily = limitError.limitType === 'daily';
+    return (
+      <View style={styles.container}>
+        <Text style={styles.limitIcon}>!</Text>
+        <Text style={styles.limitTitle}>Free Limit Reached</Text>
+        <Text style={styles.limitMessage}>
+          {isDaily
+            ? `You've used ${limitError.dailyUsed}/${limitError.dailyLimit} listings today.`
+            : `You've used ${limitError.monthlyUsed}/${limitError.monthlyLimit} listings this month.`}
+        </Text>
+        <Text style={styles.limitSubtext}>
+          Connect your eBay account for unlimited listings.
+        </Text>
+        <TouchableOpacity
+          style={styles.limitCtaButton}
+          onPress={() => navigation.navigate('Home')}
+        >
+          <Text style={styles.limitCtaText}>Connect eBay for Unlimited</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.limitSecondaryButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.limitSecondaryText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (error) {
     return (
@@ -225,5 +263,59 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  limitIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FF9500',
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 56,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  limitTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  limitMessage: {
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  limitSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  limitCtaButton: {
+    backgroundColor: '#e53238',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    marginBottom: 12,
+    width: '100%',
+    maxWidth: 300,
+    alignItems: 'center',
+  },
+  limitCtaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  limitSecondaryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  limitSecondaryText: {
+    color: '#007AFF',
+    fontSize: 16,
   },
 });

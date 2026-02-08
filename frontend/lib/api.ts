@@ -1,4 +1,5 @@
 import { API_URL, isApiConfigured } from './supabase';
+import { getAnonId } from './identity';
 
 /**
  * API client for ResellrAI backend
@@ -12,6 +13,46 @@ function getApiUrlOrThrow(): string {
     throw new Error(missingApiUrlMessage);
   }
   return API_URL;
+}
+
+// =============================================================================
+// Identity & Usage Limit Helpers
+// =============================================================================
+
+async function getIdentityHeaders(): Promise<Record<string, string>> {
+  const anonId = await getAnonId();
+  return { 'x-anon-id': anonId };
+}
+
+export class UsageLimitError extends Error {
+  limitType: 'daily' | 'monthly';
+  dailyUsed: number;
+  dailyLimit: number;
+  monthlyUsed: number;
+  monthlyLimit: number;
+  resetAt: string;
+
+  constructor(data: {
+    limitType: 'daily' | 'monthly';
+    dailyUsed: number;
+    dailyLimit: number;
+    monthlyUsed: number;
+    monthlyLimit: number;
+    resetAt: string;
+  }) {
+    const msg =
+      data.limitType === 'daily'
+        ? `Daily limit reached (${data.dailyUsed}/${data.dailyLimit})`
+        : `Monthly limit reached (${data.monthlyUsed}/${data.monthlyLimit})`;
+    super(msg);
+    this.name = 'UsageLimitError';
+    this.limitType = data.limitType;
+    this.dailyUsed = data.dailyUsed;
+    this.dailyLimit = data.dailyLimit;
+    this.monthlyUsed = data.monthlyUsed;
+    this.monthlyLimit = data.monthlyLimit;
+    this.resetAt = data.resetAt;
+  }
 }
 
 // =============================================================================
@@ -200,13 +241,22 @@ export async function generateListing(
   request: GenerateListingRequest
 ): Promise<GenerateListingResponse> {
   const apiUrl = getApiUrlOrThrow();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(`${apiUrl}/api/v1/listings/generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...identityHeaders,
     },
     body: JSON.stringify(request),
   });
+
+  if (response.status === 429) {
+    const body = await response.json().catch(() => ({}));
+    if (body.error?.code === 'USAGE_LIMIT_EXCEEDED') {
+      throw new UsageLimitError(body.error);
+    }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Unknown error' }));
@@ -474,11 +524,11 @@ export interface EbayConnectionStatus {
 /**
  * Get per-user eBay connection status
  * This is the authoritative check for whether a user has connected their eBay account.
- * @param userId - User ID to check connection for
  */
-export async function getEbayConnection(userId: string): Promise<EbayConnectionStatus> {
+export async function getEbayConnection(): Promise<EbayConnectionStatus> {
   const apiUrl = getApiUrlOrThrow();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/connection?user_id=${userId}`);
+  const anonId = await getAnonId();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/connection?user_id=${anonId}`);
 
   // The endpoint always returns 200 with { connected: true/false }
   // It never returns 500 for "not connected"
@@ -492,11 +542,11 @@ export async function getEbayConnection(userId: string): Promise<EbayConnectionS
 
 /**
  * Get eBay connected account status
- * @param userId - Temporary user ID (will come from auth later)
  */
-export async function getEbayAccount(userId: string): Promise<EbayConnectedAccount> {
+export async function getEbayAccount(): Promise<EbayConnectedAccount> {
   const apiUrl = getApiUrlOrThrow();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${userId}`);
+  const anonId = await getAnonId();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${anonId}`);
 
   if (!response.ok) {
     if (response.status === 401) {
@@ -510,15 +560,15 @@ export async function getEbayAccount(userId: string): Promise<EbayConnectedAccou
 
 /**
  * Start eBay OAuth flow
- * @param userId - User ID passed via x-user-id header
  * @returns Auth URL to open in browser
  */
-export async function startEbayOAuth(userId: string): Promise<{
+export async function startEbayOAuth(): Promise<{
   auth_url: string;
   state: string;
   expires_at: string;
 }> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const startUrl = `${apiUrl}/api/v1/ebay/oauth/start?redirect_context=mobile`;
 
   console.log('[eBay OAuth] Calling start endpoint:', startUrl);
@@ -526,7 +576,7 @@ export async function startEbayOAuth(userId: string): Promise<{
   const response = await fetch(startUrl, {
     method: 'GET',
     headers: {
-      'x-user-id': userId,
+      'x-user-id': anonId,
     },
   });
 
@@ -569,9 +619,10 @@ export async function startEbayOAuth(userId: string): Promise<{
 /**
  * Disconnect eBay account
  */
-export async function disconnectEbay(userId: string): Promise<boolean> {
+export async function disconnectEbay(): Promise<boolean> {
   const apiUrl = getApiUrlOrThrow();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${userId}`, {
+  const anonId = await getAnonId();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${anonId}`, {
     method: 'DELETE',
   });
 
@@ -581,9 +632,10 @@ export async function disconnectEbay(userId: string): Promise<boolean> {
 /**
  * Get user's eBay business policies
  */
-export async function getEbayPolicies(userId: string): Promise<EbayUserPolicies> {
+export async function getEbayPolicies(): Promise<EbayUserPolicies> {
   const apiUrl = getApiUrlOrThrow();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/policies?user_id=${userId}`);
+  const anonId = await getAnonId();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/policies?user_id=${anonId}`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
@@ -597,7 +649,6 @@ export async function getEbayPolicies(userId: string): Promise<EbayUserPolicies>
  * Publish listing to eBay
  */
 export async function publishToEbay(
-  userId: string,
   listingId: string,
   listingData: {
     listing_draft: ListingDraft;
@@ -615,8 +666,9 @@ export async function publishToEbay(
   priceOverride?: number
 ): Promise<EbayPublishResult> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/listings/${listingId}/publish?user_id=${userId}`,
+    `${apiUrl}/api/v1/ebay/listings/${listingId}/publish?user_id=${anonId}`,
     {
       method: 'POST',
       headers: {
@@ -656,13 +708,13 @@ export interface CompsFilters {
  */
 export async function getEbayComps(
   keywords: string,
-  userId: string,
   filters?: CompsFilters
 ): Promise<EbayCompsResult> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const params = new URLSearchParams();
   params.set('keywords', keywords);
-  params.set('user_id', userId);
+  params.set('user_id', anonId);
 
   if (filters?.categoryId) params.set('category_id', filters.categoryId);
   if (filters?.condition) params.set('condition', filters.condition);
@@ -682,13 +734,13 @@ export async function getEbayComps(
  */
 export async function suggestCategory(
   query: string,
-  userId: string,
   marketplace: string = 'EBAY_US'
 ): Promise<CategorySuggestionsResult> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const params = new URLSearchParams();
   params.set('query', query);
-  params.set('user_id', userId);
+  params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
@@ -732,17 +784,16 @@ export interface CategoryConditionsResult {
  * Get valid conditions for a specific eBay category
  *
  * @param categoryId - eBay category ID
- * @param userId - User ID (required for eBay API access)
  * @param marketplace - Marketplace ID (default: EBAY_US)
  */
 export async function getCategoryConditions(
   categoryId: string,
-  userId: string,
   marketplace: string = 'EBAY_US'
 ): Promise<CategoryConditionsResult> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const params = new URLSearchParams();
-  params.set('user_id', userId);
+  params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
@@ -818,17 +869,16 @@ export interface SuggestionResult {
  * Get item specifics metadata for a category
  *
  * @param categoryId - eBay category ID
- * @param userId - User ID (required for eBay API access)
  * @param marketplace - Marketplace ID (default: EBAY_US)
  */
 export async function getCategoryItemAspects(
   categoryId: string,
-  userId: string,
   marketplace: string = 'EBAY_US'
 ): Promise<ItemAspectsMetadata> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const params = new URLSearchParams();
-  params.set('user_id', userId);
+  params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
@@ -858,21 +908,20 @@ export async function getCategoryItemAspects(
  * Suggest item specifics based on AI attributes
  *
  * @param categoryId - eBay category ID
- * @param userId - User ID (required for eBay API access)
  * @param aiAttributes - AI-detected attributes
  * @param detectedBrand - Detected brand (optional)
  * @param marketplace - Marketplace ID (default: EBAY_US)
  */
 export async function suggestItemSpecifics(
   categoryId: string,
-  userId: string,
   aiAttributes: Array<{ key: string; value: string; confidence: number }>,
   detectedBrand?: { value: string | null; confidence: number },
   marketplace: string = 'EBAY_US'
 ): Promise<SuggestionResult> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const params = new URLSearchParams();
-  params.set('user_id', userId);
+  params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
@@ -910,12 +959,11 @@ export async function suggestItemSpecifics(
 /**
  * Get user's saved seller location profile
  */
-export async function getSellerLocation(
-  userId: string
-): Promise<SellerLocationProfile | null> {
+export async function getSellerLocation(): Promise<SellerLocationProfile | null> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/profile/location?user_id=${userId}`
+    `${apiUrl}/api/v1/ebay/profile/location?user_id=${anonId}`
   );
 
   if (!response.ok) {
@@ -930,12 +978,12 @@ export async function getSellerLocation(
  * Save user's seller location profile
  */
 export async function saveSellerLocation(
-  userId: string,
   location: SaveSellerLocationRequest
 ): Promise<SellerLocationProfile> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/profile/location?user_id=${userId}`,
+    `${apiUrl}/api/v1/ebay/profile/location?user_id=${anonId}`,
     {
       method: 'POST',
       headers: {
@@ -994,12 +1042,12 @@ export interface AiAutofillResponse {
  * Get AI-powered category suggestion for a listing
  */
 export async function suggestAiCategory(
-  listingId: string,
-  userId: string
+  listingId: string
 ): Promise<AiCategorySuggestResponse> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/ai/category-suggest?user_id=${userId}`,
+    `${apiUrl}/api/v1/ebay/ai/category-suggest?user_id=${anonId}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1021,12 +1069,12 @@ export async function suggestAiCategory(
 export async function autofillItemSpecifics(
   listingId: string,
   categoryId: string,
-  userId: string,
   currentSpecifics: Record<string, string> = {}
 ): Promise<AiAutofillResponse> {
   const apiUrl = getApiUrlOrThrow();
+  const anonId = await getAnonId();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/ai/autofill-specifics?user_id=${userId}`,
+    `${apiUrl}/api/v1/ebay/ai/autofill-specifics?user_id=${anonId}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

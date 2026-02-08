@@ -28,7 +28,6 @@ import {
 } from '../lib/api';
 import PublishProgress from '../components/PublishProgress';
 import LocationModal from '../components/LocationModal';
-import { TEMP_USER_ID } from '../lib/constants';
 
 interface ExportScreenProps {
   navigation: any;
@@ -76,11 +75,11 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const checkEbayConnection = async () => {
     try {
       setIsLoadingEbay(true);
-      const account = await getEbayAccount(TEMP_USER_ID);
+      const account = await getEbayAccount();
       setEbayAccount(account);
 
       if (account.connected) {
-        const policies = await getEbayPolicies(TEMP_USER_ID);
+        const policies = await getEbayPolicies();
         setEbayPolicies(policies);
 
         // Auto-select first policy of each type
@@ -189,7 +188,6 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
     try {
       const result = await publishToEbay(
-        TEMP_USER_ID,
         listing.itemId,
         {
           listing_draft: listing.listingDraft,

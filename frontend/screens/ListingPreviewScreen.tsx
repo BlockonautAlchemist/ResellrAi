@@ -31,7 +31,6 @@ import {
 import CategoryPicker from '../components/CategoryPicker';
 import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
 import WeightInput from '../components/WeightInput';
-import { TEMP_USER_ID } from '../lib/constants';
 
 // Default condition options (used before category is selected or if API fails)
 const DEFAULT_CONDITION_OPTIONS: CategoryCondition[] = [
@@ -158,7 +157,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     async function fetchAiCategory() {
       setIsLoadingAiCategory(true);
       try {
-        const result = await suggestAiCategory(initialListing.itemId, TEMP_USER_ID);
+        const result = await suggestAiCategory(initialListing.itemId);
         if (isCancelled) return;
 
         setAiCategorySuggestion(result);
@@ -230,7 +229,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       setConditionsError(null);
 
       try {
-        const result = await getCategoryConditions(categoryId, TEMP_USER_ID);
+        const result = await getCategoryConditions(categoryId);
 
         if (isCancelled) return;
 
@@ -307,7 +306,6 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           const result = await autofillItemSpecifics(
             initialListing.itemId,
             categoryId,
-            TEMP_USER_ID,
             itemSpecifics
           );
 
@@ -340,7 +338,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           setMissingAspects(result.stillMissing);
         } else {
           // Fallback: just fetch aspects metadata
-          const metadata = await getCategoryItemAspects(categoryId, TEMP_USER_ID);
+          const metadata = await getCategoryItemAspects(categoryId);
           if (isCancelled) return;
           setItemAspectsMetadata(metadata);
           const missing = metadata.requiredAspects
