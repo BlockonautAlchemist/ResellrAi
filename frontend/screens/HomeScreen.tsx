@@ -3,8 +3,8 @@ import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
   Linking,
   AppState,
@@ -14,7 +14,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, getUsageStatus, type EbayConnectionStatus, type UsageStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
-import { ScreenContainer, PrimaryButton, Card, StatusChip, TierBadge, UsageCard } from '../components/ui';
+import { ScreenContainer, PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser } from '../components/ui';
 
 interface HomeScreenProps {
   navigation: any;
@@ -37,10 +37,17 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const apiConfigured = isApiConfigured();
-  const isAtFreeLimit = usageStatus && !usageStatus.isPremium && (
-    usageStatus.dailyUsed >= usageStatus.dailyLimit ||
-    usageStatus.monthlyUsed >= usageStatus.monthlyLimit
+
+  // Derived state for conditional rendering
+  const isFree = usageStatus ? !usageStatus.isPremium : true;
+  const isEbayConnected = !!ebayConnection?.connected;
+  const isPremium = isEbayConnected || (usageStatus?.isPremium ?? false);
+  const isLimitReached = isFree && !isEbayConnected && (
+    (usageStatus?.dailyUsed ?? 0) >= (usageStatus?.dailyLimit ?? Infinity) ||
+    (usageStatus?.monthlyUsed ?? 0) >= (usageStatus?.monthlyLimit ?? Infinity)
   );
+  const shouldShowUpgradeCard = isLimitReached && !isPremium;
+  const shouldShowPremiumTeaser = isFree && !isEbayConnected && !isLimitReached;
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
 
@@ -218,95 +225,100 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   return (
     <ScreenContainer edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>ResellrAI</Text>
-        <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.title}>ResellrAI</Text>
+          <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
+        </View>
 
-      {ebayConnection?.connected ? (
-        <TierBadge isPremium={true} />
-      ) : usageStatus && !usageStatus.isPremium ? (
-        <UsageCard
-          dailyUsed={usageStatus.dailyUsed}
-          dailyLimit={usageStatus.dailyLimit}
-          monthlyUsed={usageStatus.monthlyUsed}
-          monthlyLimit={usageStatus.monthlyLimit}
-          loading={usageLoading}
-        />
-      ) : (
-        <TierBadge isPremium={false} />
-      )}
-
-      <View style={styles.statusContainer}>
-        {!apiConfigured ? (
-          <StatusChip label="API Not Configured" status="error" />
-        ) : apiConnected === null ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : apiConnected ? (
-          <StatusChip label="API Connected" status="success" />
+        {isPremium ? (
+          <TierBadge isPremium />
+        ) : isFree && usageStatus ? (
+          <UsageCard
+            dailyUsed={usageStatus.dailyUsed}
+            dailyLimit={usageStatus.dailyLimit}
+            monthlyUsed={usageStatus.monthlyUsed}
+            monthlyLimit={usageStatus.monthlyLimit}
+            loading={usageLoading}
+          />
         ) : (
-          <StatusChip label="API Disconnected" status="error" />
+          <TierBadge isPremium={false} />
         )}
-      </View>
 
-      <View style={styles.buttonContainer}>
-        <PrimaryButton
-          title="New Listing"
-          onPress={() => navigation.navigate('Camera')}
-          disabled={!apiConnected || !!isAtFreeLimit}
-          size="lg"
-        />
-        {isAtFreeLimit && (
-          <Text style={styles.limitNote}>
-            {usageStatus!.dailyUsed >= usageStatus!.dailyLimit
-              ? 'Daily free limit reached — resets tomorrow'
-              : 'Monthly free limit reached — resets next month'}
-          </Text>
-        )}
-      </View>
-
-      {/* eBay Connection */}
-      {ebayAvailable && (
-        <View style={styles.ebayButtonContainer}>
+        <View style={styles.buttonContainer}>
           <PrimaryButton
-            title={ebayConnection?.connected ? 'eBay Connected' : 'Connect eBay'}
-            subtitle={ebayConnection?.connected ? (ebayConnection.ebay_username || 'Tap to manage') : undefined}
-            onPress={handleConnectEbay}
-            disabled={isConnectingEbay || isRefreshingEbay}
-            loading={isConnectingEbay || isRefreshingEbay}
-            variant={ebayConnection?.connected ? 'success' : 'ebay'}
+            title="New Listing"
+            onPress={() => navigation.navigate('Camera')}
+            disabled={!apiConnected || shouldShowUpgradeCard}
+            size="lg"
           />
         </View>
-      )}
 
-      <Card elevated>
-        <Text style={styles.featureTitle}>How it works:</Text>
-        <View style={styles.featureItem}>
-          <View style={styles.featureNumberCircle}>
-            <Text style={styles.featureNumber}>1</Text>
+        {shouldShowUpgradeCard && (
+          <View style={styles.upgradeContainer}>
+            <UpgradeCard
+              onUpgrade={handleConnectEbay}
+              loading={isConnectingEbay || isRefreshingEbay}
+            />
           </View>
-          <Text style={styles.featureText}>Take photos of your item</Text>
-        </View>
-        <View style={styles.featureItem}>
-          <View style={styles.featureNumberCircle}>
-            <Text style={styles.featureNumber}>2</Text>
-          </View>
-          <Text style={styles.featureText}>AI generates title, description, and price</Text>
-        </View>
-        <View style={styles.featureItem}>
-          <View style={styles.featureNumberCircle}>
-            <Text style={styles.featureNumber}>3</Text>
-          </View>
-          <Text style={styles.featureText}>Edit, confirm, and copy to clipboard</Text>
-        </View>
-      </Card>
+        )}
 
-      <Text style={styles.version}>v0.3.0 - eBay Integration</Text>
+        {shouldShowPremiumTeaser && (
+          <View style={styles.upgradeContainer}>
+            <PremiumTeaser
+              onPress={handleConnectEbay}
+              loading={isConnectingEbay || isRefreshingEbay}
+            />
+          </View>
+        )}
+
+        {ebayAvailable && isEbayConnected && (
+          <View style={styles.ebayButtonContainer}>
+            <PrimaryButton
+              title="eBay Connected"
+              subtitle={ebayConnection?.ebay_username || 'Tap to manage'}
+              onPress={handleConnectEbay}
+              disabled={isConnectingEbay || isRefreshingEbay}
+              loading={isConnectingEbay || isRefreshingEbay}
+              variant="success"
+            />
+          </View>
+        )}
+
+        <Card elevated>
+          <Text style={styles.featureTitle}>How it works:</Text>
+          <View style={styles.featureItem}>
+            <View style={styles.featureNumberCircle}>
+              <Text style={styles.featureNumber}>1</Text>
+            </View>
+            <Text style={styles.featureText}>Take photos of your item</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <View style={styles.featureNumberCircle}>
+              <Text style={styles.featureNumber}>2</Text>
+            </View>
+            <Text style={styles.featureText}>AI generates title, description, and price</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <View style={styles.featureNumberCircle}>
+              <Text style={styles.featureNumber}>3</Text>
+            </View>
+            <Text style={styles.featureText}>Edit, confirm, and copy to clipboard</Text>
+          </View>
+        </Card>
+
+        <View style={styles.spacer} />
+        <Text style={styles.version}>v0.3.0 - eBay Integration</Text>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xl,
+  },
   header: {
     alignItems: 'center',
     marginBottom: spacing.xl,
@@ -321,11 +333,8 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: spacing.xs,
   },
-  statusContainer: {
-    alignItems: 'center',
-    marginBottom: spacing.xxxl,
-  },
   buttonContainer: {
+    marginTop: spacing.xxxl,
     marginBottom: spacing.xxxl + spacing.sm,
   },
   ebayButtonContainer: {
@@ -361,16 +370,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  limitNote: {
-    fontSize: typography.sizes.md,
-    color: colors.warning,
-    textAlign: 'center' as const,
-    marginTop: spacing.sm,
+  upgradeContainer: {
+    marginBottom: spacing.xl,
+  },
+  spacer: {
+    flex: 1,
   },
   version: {
-    position: 'absolute',
-    bottom: 30,
-    alignSelf: 'center',
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
     fontSize: typography.sizes.sm,
     color: colors.textMuted,
   },
