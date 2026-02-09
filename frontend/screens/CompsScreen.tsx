@@ -7,7 +7,6 @@ import {
   Image,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   RefreshControl,
   Linking,
 } from 'react-native';
@@ -18,6 +17,8 @@ import {
   type CompsFilters,
   type GenerateListingResponse,
 } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, LoadingState, Card } from '../components/ui';
 
 interface CompsScreenProps {
   navigation: any;
@@ -103,13 +104,13 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
   const getConfidenceColor = (confidence: string) => {
     switch (confidence) {
       case 'high':
-        return '#34C759';
+        return colors.success;
       case 'medium':
-        return '#FF9500';
+        return colors.warning;
       case 'low':
-        return '#FF3B30';
+        return colors.error;
       default:
-        return '#999';
+        return colors.textMuted;
     }
   };
 
@@ -214,7 +215,7 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
 
       {/* Stats Card */}
       {compsResult && compsResult.stats.sample_size > 0 && (
-        <View style={styles.statsCard}>
+        <Card>
           <View style={styles.statsMain}>
             <Text style={styles.statsLabel}>Median Price</Text>
             <Text style={styles.statsMedian}>
@@ -261,7 +262,7 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
               Cached {compsResult.cache_age ? `${Math.floor(compsResult.cache_age / 60)}m ago` : ''}
             </Text>
           )}
-        </View>
+        </Card>
       )}
 
       {/* Limitations */}
@@ -277,14 +278,13 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
 
       {/* Use Median Button */}
       {compsResult && compsResult.stats.median && (
-        <TouchableOpacity
-          style={styles.useMedianButton}
-          onPress={() => handleUsePrice(compsResult.stats.median!)}
-        >
-          <Text style={styles.useMedianText}>
-            Use Median Price (${compsResult.stats.median.toFixed(2)})
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.useMedianContainer}>
+          <PrimaryButton
+            title={`Use Median Price ($${compsResult.stats.median.toFixed(2)})`}
+            onPress={() => handleUsePrice(compsResult.stats.median!)}
+            variant="success"
+          />
+        </View>
       )}
 
       {/* Results Header */}
@@ -300,9 +300,9 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
         <>
           <Text style={styles.emptyTitle}>Error Loading Comps</Text>
           <Text style={styles.emptyText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+          <View style={styles.retryContainer}>
+            <PrimaryButton title="Retry" onPress={handleRefresh} size="sm" />
+          </View>
         </>
       ) : (
         <>
@@ -316,16 +316,11 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
   );
 
   if (isLoading && !compsResult) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Finding comparable listings...</Text>
-      </View>
-    );
+    return <LoadingState message="Finding comparable listings..." />;
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer edges={[]} noPadding>
       <FlatList
         data={compsResult?.data.slice(0, 10) || []}
         renderItem={renderCompItem}
@@ -337,304 +332,265 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
       />
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
-  },
   listContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.xxl,
   },
   disclaimerBanner: {
-    backgroundColor: '#FFF3CD',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    backgroundColor: colors.warningLight,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
   disclaimerText: {
-    fontSize: 13,
-    color: '#856404',
+    fontSize: typography.sizes.md,
+    color: colors.warningDark,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: typography.weights.medium,
   },
   searchContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    gap: 8,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: typography.sizes.input,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.borderMedium,
   },
   searchButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
     justifyContent: 'center',
   },
   searchButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontWeight: typography.weights.semibold,
   },
   filterContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
   filterChip: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginRight: 8,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.xl,
+    marginRight: spacing.sm,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.borderMedium,
   },
   filterChipActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterChipText: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: typography.sizes.body,
+    color: colors.text,
   },
   filterChipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  statsCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    color: colors.textInverse,
+    fontWeight: typography.weights.semibold,
   },
   statsMain: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   statsLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    marginBottom: spacing.xs,
   },
   statsMedian: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: typography.sizes.hero,
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 12,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
   },
   statItem: {
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
   },
   statValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   statsMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.border,
   },
   sampleSize: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: typography.sizes.md,
+    color: colors.textTertiary,
   },
   confidenceBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.lg,
   },
   confidenceText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
   },
   cacheInfo: {
-    fontSize: 11,
-    color: '#999',
+    fontSize: typography.sizes.xs,
+    color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   limitationsContainer: {
-    backgroundColor: '#f9f9f9',
-    marginHorizontal: 16,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+    backgroundColor: colors.surfaceTertiary,
+    marginHorizontal: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.md,
   },
   limitationText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginBottom: spacing.xs,
   },
-  useMedianButton: {
-    backgroundColor: '#34C759',
-    marginHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  useMedianText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  useMedianContainer: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
   },
   resultsHeader: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    marginTop: 8,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.textTertiary,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
   compItem: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     flexDirection: 'row',
   },
   compImage: {
     width: 60,
     height: 60,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSecondary,
   },
   compContent: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: spacing.md,
   },
   compTitle: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 4,
+    fontSize: typography.sizes.body,
+    color: colors.text,
+    marginBottom: spacing.xs,
     lineHeight: 18,
   },
   compDetails: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   compPrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
   },
   compShipping: {
-    fontSize: 11,
-    color: '#999',
-    marginLeft: 4,
+    fontSize: typography.sizes.xs,
+    color: colors.textMuted,
+    marginLeft: spacing.xs,
   },
   compMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   conditionBadge: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 6,
+    backgroundColor: colors.surfaceSecondary,
+    paddingHorizontal: spacing.sm - 2,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radii.sm - 2,
   },
   conditionText: {
     fontSize: 10,
-    color: '#666',
+    color: colors.textTertiary,
   },
   sellerInfo: {
-    fontSize: 11,
-    color: '#999',
+    fontSize: typography.sizes.xs,
+    color: colors.textMuted,
   },
   compActions: {
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm - 2,
   },
   usePriceButton: {
-    backgroundColor: '#34C759',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm - 2,
+    borderRadius: radii.sm,
   },
   usePriceText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   viewButton: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    backgroundColor: colors.surfaceSecondary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm - 2,
+    borderRadius: radii.sm,
   },
   viewButtonText: {
-    color: '#666',
-    fontSize: 12,
+    color: colors.textTertiary,
+    fontSize: typography.sizes.sm,
   },
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: 40,
-    paddingHorizontal: 32,
+    paddingHorizontal: spacing.xxxl,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
   },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+  retryContainer: {
+    marginTop: spacing.lg,
   },
 });

@@ -17,6 +17,7 @@ import {
   type SellerLocationProfile,
   type SaveSellerLocationRequest,
 } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
 
 interface LocationModalProps {
   visible: boolean;
@@ -134,7 +135,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
 
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Loading...</Text>
           </View>
         ) : (
@@ -160,7 +161,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
                   value={postalCode}
                   onChangeText={setPostalCode}
                   placeholder="e.g., 97201"
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="default"
                   autoCapitalize="characters"
                   maxLength={20}
@@ -174,7 +175,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
                   value={city}
                   onChangeText={setCity}
                   placeholder="e.g., Portland"
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textMuted}
                   autoCapitalize="words"
                   maxLength={128}
                 />
@@ -187,7 +188,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
                   value={stateOrProvince}
                   onChangeText={setStateOrProvince}
                   placeholder="e.g., OR"
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textMuted}
                   autoCapitalize="characters"
                   maxLength={128}
                 />
@@ -204,7 +205,7 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
                   value={addressLine1}
                   onChangeText={setAddressLine1}
                   placeholder="e.g., 123 Main St"
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textMuted}
                   autoCapitalize="words"
                   maxLength={128}
                 />
@@ -226,31 +227,31 @@ export default function LocationModal({ visible, onClose, onSaved }: LocationMod
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.subtitle,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   headerButton: {
-    fontSize: 16,
-    color: '#007AFF',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
   },
   headerButtonPrimary: {
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   headerButtonDisabled: {
-    color: '#ccc',
+    color: colors.disabled,
   },
   loadingContainer: {
     flex: 1,
@@ -258,63 +259,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
+    marginTop: spacing.md,
+    fontSize: typography.sizes.button,
+    color: colors.textTertiary,
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
   description: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    marginBottom: spacing.xl,
     lineHeight: 20,
   },
   errorContainer: {
-    backgroundColor: '#FFE5E5',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: colors.errorLight,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.lg,
   },
   errorText: {
-    color: '#FF3B30',
-    fontSize: 14,
+    color: colors.error,
+    fontSize: typography.sizes.body,
   },
   section: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.textTertiary,
+    marginBottom: spacing.md,
   },
   inputContainer: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   label: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: typography.sizes.md,
+    color: colors.textTertiary,
     marginBottom: 6,
   },
   input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+    backgroundColor: colors.inputBackground,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.button,
+    color: colors.text,
   },
   footer: {
-    paddingVertical: 20,
+    paddingVertical: spacing.xl,
   },
   footerText: {
-    fontSize: 13,
-    color: '#999',
+    fontSize: typography.sizes.md,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
   },

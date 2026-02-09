@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  Alert,
-  TouchableOpacity,
 } from 'react-native';
 import { generateListing, UsageLimitError, type GenerateListingResponse } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, ErrorBanner } from '../components/ui';
 
 interface GeneratingScreenProps {
   navigation: any;
@@ -77,15 +77,6 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
       }
 
       setError(err instanceof Error ? err.message : 'Generation failed');
-
-      Alert.alert(
-        'Generation Failed',
-        err instanceof Error ? err.message : 'An error occurred',
-        [
-          { text: 'Try Again', onPress: () => navigation.goBack() },
-          { text: 'Cancel', onPress: () => navigation.navigate('Home') },
-        ]
-      );
     }
   };
 
@@ -97,225 +88,227 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
   if (limitError) {
     const isDaily = limitError.limitType === 'daily';
     return (
-      <View style={styles.container}>
-        <Text style={styles.limitIcon}>!</Text>
-        <Text style={styles.limitTitle}>Free Limit Reached</Text>
-        <Text style={styles.limitMessage}>
-          {isDaily
-            ? `You've used ${limitError.dailyUsed}/${limitError.dailyLimit} listings today.`
-            : `You've used ${limitError.monthlyUsed}/${limitError.monthlyLimit} listings this month.`}
-        </Text>
-        <Text style={styles.limitSubtext}>
-          Connect your eBay account for unlimited listings.
-        </Text>
-        <TouchableOpacity
-          style={styles.limitCtaButton}
-          onPress={() => navigation.navigate('Home')}
-        >
-          <Text style={styles.limitCtaText}>Connect eBay for Unlimited</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.limitSecondaryButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.limitSecondaryText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
+      <ScreenContainer edges={[]}>
+        <View style={styles.errorScreenContainer}>
+          <View style={styles.limitIconCircle}>
+            <Text style={styles.limitIconText}>!</Text>
+          </View>
+          <Text style={styles.limitTitle}>Free Limit Reached</Text>
+          <Text style={styles.limitMessage}>
+            {isDaily
+              ? `You've used ${limitError.dailyUsed}/${limitError.dailyLimit} listings today.`
+              : `You've used ${limitError.monthlyUsed}/${limitError.monthlyLimit} listings this month.`}
+          </Text>
+          <Text style={styles.limitSubtext}>
+            Connect your eBay account for unlimited listings.
+          </Text>
+          <View style={styles.limitButtons}>
+            <PrimaryButton
+              title="Connect eBay for Unlimited"
+              onPress={() => navigation.navigate('Home')}
+              variant="ebay"
+            />
+            <View style={styles.buttonSpacer} />
+            <PrimaryButton
+              title="Go Back"
+              onPress={() => navigation.goBack()}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </ScreenContainer>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorIcon}>❌</Text>
-        <Text style={styles.errorTitle}>Generation Failed</Text>
-        <Text style={styles.errorMessage}>{error}</Text>
-      </View>
+      <ScreenContainer edges={[]}>
+        <View style={styles.errorScreenContainer}>
+          <ErrorBanner message={error} type="error" />
+          <Text style={styles.errorTitle}>Generation Failed</Text>
+          <View style={styles.limitButtons}>
+            <PrimaryButton
+              title="Try Again"
+              onPress={() => navigation.goBack()}
+            />
+            <View style={styles.buttonSpacer} />
+            <PrimaryButton
+              title="Go Home"
+              onPress={() => navigation.navigate('Home')}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </ScreenContainer>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color="#007AFF" style={styles.spinner} />
-      
-      <Text style={styles.title}>Generating Listing</Text>
-      <Text style={styles.timer}>{formatTime(elapsedTime)}</Text>
+    <ScreenContainer edges={[]}>
+      <View style={styles.progressContainer}>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.spinner} />
 
-      <View style={styles.steps}>
-        {STEPS.map((step, index) => (
-          <View key={step.id} style={styles.stepRow}>
-            <View
-              style={[
-                styles.stepIndicator,
-                index < currentStep && styles.stepComplete,
-                index === currentStep && styles.stepActive,
-              ]}
-            >
-              {index < currentStep ? (
-                <Text style={styles.stepCheckmark}>✓</Text>
-              ) : index === currentStep ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.stepNumber}>{index + 1}</Text>
-              )}
+        <Text style={styles.title}>Generating Listing</Text>
+        <Text style={styles.timer}>{formatTime(elapsedTime)}</Text>
+
+        <View style={styles.steps}>
+          {STEPS.map((step, index) => (
+            <View key={step.id} style={styles.stepRow}>
+              <View
+                style={[
+                  styles.stepIndicator,
+                  index < currentStep && styles.stepComplete,
+                  index === currentStep && styles.stepActive,
+                ]}
+              >
+                {index < currentStep ? (
+                  <Text style={styles.stepCheckmark}>✓</Text>
+                ) : index === currentStep ? (
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                ) : (
+                  <Text style={styles.stepNumber}>{index + 1}</Text>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.stepLabel,
+                  index <= currentStep && styles.stepLabelActive,
+                ]}
+              >
+                {step.label}
+              </Text>
             </View>
-            <Text
-              style={[
-                styles.stepLabel,
-                index <= currentStep && styles.stepLabelActive,
-              ]}
-            >
-              {step.label}
-            </Text>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
 
-      <Text style={styles.hint}>
-        This usually takes 15-30 seconds
-      </Text>
-    </View>
+        <Text style={styles.hint}>
+          This usually takes 15-30 seconds
+        </Text>
+      </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  progressContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   spinner: {
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: typography.sizes.heading,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   timer: {
-    fontSize: 36,
+    fontSize: typography.sizes.hero,
     fontWeight: '300',
-    color: '#007AFF',
-    marginBottom: 40,
+    color: colors.primary,
+    marginBottom: spacing.xxxl + spacing.sm,
   },
   steps: {
     width: '100%',
     maxWidth: 300,
-    marginBottom: 40,
+    marginBottom: spacing.xxxl + spacing.sm,
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   stepIndicator: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#ddd',
+    backgroundColor: colors.separator,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   stepComplete: {
-    backgroundColor: '#34C759',
+    backgroundColor: colors.success,
   },
   stepActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.primary,
   },
   stepNumber: {
-    color: '#999',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.textMuted,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
   },
   stepCheckmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: colors.textInverse,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.bold,
   },
   stepLabel: {
-    fontSize: 16,
-    color: '#999',
+    fontSize: typography.sizes.button,
+    color: colors.textMuted,
   },
   stepLabelActive: {
-    color: '#333',
-    fontWeight: '500',
+    color: colors.text,
+    fontWeight: typography.weights.medium,
   },
   hint: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: typography.sizes.body,
+    color: colors.textMuted,
     textAlign: 'center',
   },
-  errorIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+  // Error / Limit screens
+  errorScreenContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
   },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  errorMessage: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  limitIcon: {
+  limitIconCircle: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#FF9500',
-    color: '#fff',
+    backgroundColor: colors.warning,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  limitIconText: {
+    color: colors.textInverse,
     fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    lineHeight: 56,
-    marginBottom: 16,
-    overflow: 'hidden',
+    fontWeight: typography.weights.bold,
   },
   limitTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
+    fontSize: typography.sizes.heading,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.md,
   },
   limitMessage: {
-    fontSize: 16,
-    color: '#555',
+    fontSize: typography.sizes.button,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   limitSubtext: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: typography.sizes.body,
+    color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xxxl,
   },
-  limitCtaButton: {
-    backgroundColor: '#e53238',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    marginBottom: 12,
+  limitButtons: {
     width: '100%',
     maxWidth: 300,
-    alignItems: 'center',
   },
-  limitCtaText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  buttonSpacer: {
+    height: spacing.md,
   },
-  limitSecondaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
-  limitSecondaryText: {
-    color: '#007AFF',
-    fontSize: 16,
+  errorTitle: {
+    fontSize: typography.sizes.heading,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.lg,
   },
 });

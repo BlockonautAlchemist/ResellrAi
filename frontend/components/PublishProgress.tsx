@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import type { EbayPublishStep } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
 
 interface PublishProgressProps {
   steps: EbayPublishStep[];
@@ -33,7 +34,7 @@ export default function PublishProgress({ steps, currentStep }: PublishProgressP
                 {step.status === 'complete' ? (
                   <Text style={styles.checkmark}>✓</Text>
                 ) : step.status === 'in_progress' ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={colors.textInverse} />
                 ) : step.status === 'failed' ? (
                   <Text style={styles.errorMark}>✕</Text>
                 ) : (
@@ -86,21 +87,21 @@ export default function PublishProgress({ steps, currentStep }: PublishProgressP
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 8,
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    marginHorizontal: spacing.lg,
+    marginVertical: spacing.sm,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.lg,
     textAlign: 'center',
   },
   stepsContainer: {
-    paddingLeft: 8,
+    paddingLeft: spacing.sm,
   },
   stepWrapper: {
     position: 'relative',
@@ -108,69 +109,69 @@ const styles = StyleSheet.create({
   stepRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   stepIndicator: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.separator,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   stepComplete: {
-    backgroundColor: '#34C759',
+    backgroundColor: colors.success,
   },
   stepInProgress: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.primary,
   },
   stepFailed: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: colors.error,
   },
   stepNumber: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.textTertiary,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
   },
   checkmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: colors.textInverse,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.bold,
   },
   errorMark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: colors.textInverse,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.bold,
   },
   stepContent: {
     flex: 1,
-    paddingTop: 4,
+    paddingTop: spacing.xs,
   },
   stepLabel: {
-    fontSize: 15,
-    color: '#999',
-    fontWeight: '500',
+    fontSize: typography.sizes.input,
+    color: colors.textMuted,
+    fontWeight: typography.weights.medium,
   },
   stepLabelComplete: {
-    color: '#34C759',
+    color: colors.success,
   },
   stepLabelActive: {
-    color: '#007AFF',
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   stepLabelFailed: {
-    color: '#FF3B30',
+    color: colors.error,
   },
   stepDetail: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
     marginTop: 2,
   },
   stepError: {
-    fontSize: 13,
-    color: '#FF3B30',
-    marginTop: 4,
+    fontSize: typography.sizes.md,
+    color: colors.error,
+    marginTop: spacing.xs,
   },
   connector: {
     position: 'absolute',
@@ -178,9 +179,9 @@ const styles = StyleSheet.create({
     top: 48,
     width: 2,
     height: 24,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.separator,
   },
   connectorComplete: {
-    backgroundColor: '#34C759',
+    backgroundColor: colors.success,
   },
 });

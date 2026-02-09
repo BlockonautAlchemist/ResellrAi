@@ -28,6 +28,8 @@ import {
 } from '../lib/api';
 import PublishProgress from '../components/PublishProgress';
 import LocationModal from '../components/LocationModal';
+import { colors, spacing, typography, radii } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, Card, StatusChip, ErrorBanner } from '../components/ui';
 
 interface ExportScreenProps {
   navigation: any;
@@ -193,9 +195,9 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           listing_draft: listing.listingDraft,
           photo_urls: listing.photoUrls,
           pricing_suggestion: listing.pricingSuggestion,
-          item_specifics: itemSpecifics,  // Pass item specifics from PreviewScreen
-          package_weight: packageWeight,  // Pass package weight from PreviewScreen
-          package_dimensions: packageDimensions,  // Pass package dimensions from PreviewScreen
+          item_specifics: itemSpecifics,
+          package_weight: packageWeight,
+          package_dimensions: packageDimensions,
         },
         {
           fulfillment_policy_id: selectedPolicies.fulfillment.policy_id,
@@ -316,7 +318,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer edges={[]} noPadding>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Ready to List!</Text>
@@ -332,7 +334,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         </View>
 
         {/* Title Section */}
-        <View style={styles.section}>
+        <Card>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Title</Text>
             <TouchableOpacity
@@ -345,10 +347,10 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
             </TouchableOpacity>
           </View>
           <Text style={styles.titleText}>{title}</Text>
-        </View>
+        </Card>
 
         {/* Description Section */}
-        <View style={styles.section}>
+        <Card>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Description</Text>
             <TouchableOpacity
@@ -361,10 +363,10 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
             </TouchableOpacity>
           </View>
           <Text style={styles.descriptionText}>{description}</Text>
-        </View>
+        </Card>
 
         {/* Attributes */}
-        <View style={styles.section}>
+        <Card>
           <Text style={styles.sectionTitle}>Item Details</Text>
           {listing.listingDraft.attributes.map((attr, index) => (
             <View key={index} style={styles.attributeRow}>
@@ -372,21 +374,19 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
               <Text style={styles.attributeValue}>{attr.value}</Text>
             </View>
           ))}
-        </View>
+        </Card>
 
         {/* eBay Direct Publish */}
         {isLoadingEbay ? (
-          <View style={styles.ebayCard}>
-            <ActivityIndicator size="small" color="#e53238" />
+          <Card borderColor={colors.ebay}>
+            <ActivityIndicator size="small" color={colors.ebay} />
             <Text style={styles.ebayLoadingText}>Checking eBay connection...</Text>
-          </View>
+          </Card>
         ) : ebayAccount?.connected ? (
-          <View style={styles.ebayCard}>
+          <Card borderColor={colors.ebay}>
             <View style={styles.ebayHeader}>
               <Text style={styles.ebayTitle}>Publish Directly to eBay</Text>
-              <View style={styles.ebayConnectedBadge}>
-                <Text style={styles.ebayConnectedText}>Connected</Text>
-              </View>
+              <StatusChip label="Connected" status="success" />
             </View>
 
             {/* Show progress when publishing */}
@@ -424,23 +424,19 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
                 {/* Error Message with Guidance */}
                 {publishResult?.error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorTitle}>{publishResult.error.message}</Text>
-                    {publishResult.error.action && (
-                      <Text style={styles.errorAction}>
-                        {getErrorGuidance(publishResult.error.code).action}
-                      </Text>
-                    )}
-                  </View>
+                  <ErrorBanner
+                    message={publishResult.error.message}
+                    action={getErrorGuidance(publishResult.error.code).action}
+                    type="error"
+                  />
                 )}
 
                 {/* Category Warning */}
                 {!listing.listingDraft.category.platformCategoryId && (
-                  <View style={styles.warningContainer}>
-                    <Text style={styles.warningText}>
-                      No eBay category selected. Go back to Preview to select a category.
-                    </Text>
-                  </View>
+                  <ErrorBanner
+                    message="No eBay category selected. Go back to Preview to select a category."
+                    type="warning"
+                  />
                 )}
 
                 {/* Policy Selection */}
@@ -459,39 +455,33 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
                 {/* Missing Item Specifics Warning */}
                 {missingItemSpecifics.length > 0 && (
-                  <View style={styles.warningContainer}>
-                    <Text style={styles.warningText}>
-                      {missingItemSpecifics.length} required item specific{missingItemSpecifics.length > 1 ? 's' : ''} still missing. Go back to Preview to fill them in.
-                    </Text>
-                  </View>
+                  <ErrorBanner
+                    message={`${missingItemSpecifics.length} required item specific${missingItemSpecifics.length > 1 ? 's' : ''} still missing. Go back to Preview to fill them in.`}
+                    type="warning"
+                  />
                 )}
 
                 {/* Publish Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.publishButton,
-                    (!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0) &&
-                      styles.publishButtonDisabled,
-                  ]}
+                <PrimaryButton
+                  title={`Publish to eBay - $${price}`}
                   onPress={handlePublishToEbay}
                   disabled={!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0}
-                >
-                  <Text style={styles.publishButtonText}>Publish to eBay - ${price}</Text>
-                </TouchableOpacity>
+                  variant="ebay"
+                />
               </>
             ) : null}
-          </View>
+          </Card>
         ) : (
-          <View style={styles.ebayCard}>
+          <Card borderColor={colors.ebay}>
             <Text style={styles.ebayNotConnectedTitle}>Connect eBay to publish directly</Text>
             <Text style={styles.ebayNotConnectedText}>
               Go to Home screen to connect your eBay account
             </Text>
-          </View>
+          </Card>
         )}
 
         {/* Manual Instructions */}
-        <View style={styles.instructionsCard}>
+        <Card style={styles.instructionsCard}>
           <Text style={styles.instructionsTitle}>Or List Manually</Text>
           <Text style={styles.instructionsText}>
             1. Open eBay app{'\n'}
@@ -501,7 +491,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
             5. Set price to ${price}{'\n'}
             6. Publish your listing!
           </Text>
-        </View>
+        </Card>
       </ScrollView>
 
       {/* Location Modal */}
@@ -594,12 +584,10 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
             ))}
 
             {ebayPolicies && !ebayPolicies.has_required_policies && (
-              <View style={styles.policyWarning}>
-                <Text style={styles.policyWarningText}>
-                  Missing policies: {ebayPolicies.missing_policies.join(', ')}.
-                  Please set up policies in eBay Seller Hub.
-                </Text>
-              </View>
+              <ErrorBanner
+                message={`Missing policies: ${ebayPolicies.missing_policies.join(', ')}. Please set up policies in eBay Seller Hub.`}
+                type="warning"
+              />
             )}
           </ScrollView>
         </View>
@@ -607,395 +595,272 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.copyAllButton, copied === 'all' && styles.copyAllButtonSuccess]}
+        <PrimaryButton
+          title={copied === 'all' ? 'Copied to Clipboard!' : 'Copy All to Clipboard'}
           onPress={copyAll}
-        >
-          <Text style={styles.copyAllButtonText}>
-            {copied === 'all' ? 'Copied to Clipboard!' : 'Copy All to Clipboard'}
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.doneButton, exported && styles.doneButtonSuccess]}
+          variant={copied === 'all' ? 'success' : 'primary'}
+        />
+        <View style={styles.footerSpacer} />
+        <PrimaryButton
+          title={exported ? 'Back to Home' : 'Mark as Exported'}
           onPress={exported ? () => navigation.navigate('Home') : handleMarkExported}
-        >
-          <Text style={styles.doneButtonText}>
-            {exported ? 'Back to Home' : 'Mark as Exported'}
-          </Text>
-        </TouchableOpacity>
+          variant={exported ? 'success' : 'secondary'}
+        />
       </View>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
   scrollView: {
     flex: 1,
   },
   header: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingVertical: spacing.xxl,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#34C759',
+    fontSize: typography.sizes.large,
+    fontWeight: typography.weights.bold,
+    color: colors.success,
   },
   headerSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
+    fontSize: typography.sizes.button,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
   },
   priceCard: {
-    backgroundColor: '#007AFF',
-    marginHorizontal: 16,
-    padding: 20,
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    marginHorizontal: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: radii.lg,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   priceLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
-    marginBottom: 4,
+    color: colors.whiteAlpha80,
+    fontSize: typography.sizes.body,
+    marginBottom: spacing.xs,
   },
   priceValue: {
-    color: '#fff',
-    fontSize: 36,
-    fontWeight: 'bold',
-  },
-  section: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
+    color: colors.textInverse,
+    fontSize: typography.sizes.hero,
+    fontWeight: typography.weights.bold,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   copyButton: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: colors.surfaceSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm - 2,
+    borderRadius: radii.xl,
   },
   copyButtonSuccess: {
-    backgroundColor: '#34C759',
+    backgroundColor: colors.success,
   },
   copyButtonText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.primary,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
   },
   copyButtonTextSuccess: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   titleText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.subtitle,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
     lineHeight: 24,
   },
   descriptionText: {
-    fontSize: 15,
-    color: '#555',
+    fontSize: typography.sizes.input,
+    color: colors.textSecondary,
     lineHeight: 22,
   },
   attributeRow: {
     flexDirection: 'row',
-    paddingVertical: 6,
+    paddingVertical: spacing.sm - 2,
   },
   attributeKey: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
     width: 100,
   },
   attributeValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: typography.sizes.body,
+    color: colors.text,
+    fontWeight: typography.weights.medium,
     flex: 1,
   },
   instructionsCard: {
-    backgroundColor: '#E3F2FF',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.primaryLight,
   },
   instructionsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
-    marginBottom: 8,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
+    marginBottom: spacing.sm,
   },
   instructionsText: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: typography.sizes.body,
+    color: colors.text,
     lineHeight: 24,
   },
   footer: {
-    padding: 16,
+    padding: spacing.lg,
     paddingBottom: 34,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    gap: 12,
+    borderTopColor: colors.border,
   },
-  copyAllButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  copyAllButtonSuccess: {
-    backgroundColor: '#34C759',
-  },
-  copyAllButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  doneButton: {
-    backgroundColor: '#f0f0f0',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  doneButtonSuccess: {
-    backgroundColor: '#34C759',
-  },
-  doneButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '600',
+  footerSpacer: {
+    height: spacing.md,
   },
   // eBay Styles
-  ebayCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#e53238',
-  },
   ebayHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   ebayTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  ebayConnectedBadge: {
-    backgroundColor: '#34C759',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  ebayConnectedText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   ebayLoadingText: {
-    color: '#666',
-    marginTop: 8,
+    color: colors.textTertiary,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
   ebayNotConnectedTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
   ebayNotConnectedText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
   },
   policySection: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   policySectionTitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    marginBottom: spacing.sm,
   },
   policySelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radii.md,
   },
   policySelectorText: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: typography.sizes.input,
+    color: colors.text,
   },
   policySelectorArrow: {
     fontSize: 20,
-    color: '#999',
-  },
-  publishButton: {
-    backgroundColor: '#e53238',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  publishButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  publishButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.textMuted,
   },
   ebaySuccess: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   ebaySuccessText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#34C759',
-    marginBottom: 12,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.success,
+    marginBottom: spacing.md,
   },
   viewListingButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 24,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xxl,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radii.md,
   },
   viewListingButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
+    color: colors.textInverse,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
   },
   publishDetailText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
   },
   errorProgressContainer: {
-    marginBottom: 12,
-  },
-  errorContainer: {
-    backgroundColor: '#FFE5E5',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  errorTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF3B30',
-    marginBottom: 4,
-  },
-  errorAction: {
-    fontSize: 13,
-    color: '#666',
-  },
-  warningContainer: {
-    backgroundColor: '#FFF3CD',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  warningText: {
-    fontSize: 13,
-    color: '#856404',
+    marginBottom: spacing.md,
   },
   // Modal Styles
   modalContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   modalDone: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   modalContent: {
     flex: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
   policyGroupTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 16,
-    marginBottom: 8,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.textTertiary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   policyOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 14,
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: radii.md,
+    marginBottom: spacing.sm,
   },
   policyOptionSelected: {
-    backgroundColor: '#E8F4FD',
+    backgroundColor: colors.primaryMuted,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: colors.primary,
   },
   policyOptionText: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: typography.sizes.input,
+    color: colors.text,
   },
   policyCheckmark: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  policyWarning: {
-    backgroundColor: '#FFF3CD',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  policyWarningText: {
-    fontSize: 14,
-    color: '#856404',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
 });

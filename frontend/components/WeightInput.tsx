@@ -15,6 +15,7 @@ import type {
   PackagingType,
 } from '../lib/api';
 import { PACKAGING_TYPE_LABELS } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
 
 interface Props {
   weight: PackageWeight | null;
@@ -147,7 +148,7 @@ export default function WeightInput({
           {confidence != null && (
             <Text style={[
               styles.confidenceText,
-              { color: confidence >= 0.7 ? '#34C759' : confidence >= 0.4 ? '#FF9500' : '#FF3B30' },
+              { color: confidence >= 0.7 ? colors.success : confidence >= 0.4 ? colors.warning : colors.error },
             ]}>
               {Math.round(confidence * 100)}% confidence
             </Text>
@@ -200,7 +201,7 @@ export default function WeightInput({
             value={currentWeightValue > 0 ? String(currentWeightValue) : ''}
             onChangeText={handleWeightValueChange}
             placeholder="0"
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.textMuted}
             keyboardType="decimal-pad"
           />
 
@@ -256,7 +257,7 @@ export default function WeightInput({
               value={dimensions?.length ? String(dimensions.length) : ''}
               onChangeText={(text) => handleDimensionChange('length', text)}
               placeholder="0"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.textMuted}
               keyboardType="decimal-pad"
             />
           </View>
@@ -268,7 +269,7 @@ export default function WeightInput({
               value={dimensions?.width ? String(dimensions.width) : ''}
               onChangeText={(text) => handleDimensionChange('width', text)}
               placeholder="0"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.textMuted}
               keyboardType="decimal-pad"
             />
           </View>
@@ -280,7 +281,7 @@ export default function WeightInput({
               value={dimensions?.height ? String(dimensions.height) : ''}
               onChangeText={(text) => handleDimensionChange('height', text)}
               placeholder="0"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.textMuted}
               keyboardType="decimal-pad"
             />
           </View>
@@ -307,197 +308,197 @@ export default function WeightInput({
 
 const styles = StyleSheet.create({
   section: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   errorBadge: {
-    backgroundColor: '#FF3B30',
-    paddingHorizontal: 8,
+    backgroundColor: colors.error,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 10,
   },
   errorBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   suggestionBanner: {
-    backgroundColor: '#E8F4FD',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: colors.primaryMuted,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: colors.primary,
     borderStyle: 'dashed',
   },
   suggestionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
     marginBottom: 6,
   },
   suggestionValue: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: typography.sizes.body,
+    color: colors.text,
     marginBottom: 2,
   },
   suggestionSource: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
     fontStyle: 'italic',
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   useSuggestionText: {
-    fontSize: 12,
-    color: '#007AFF',
-    fontWeight: '500',
+    fontSize: typography.sizes.sm,
+    color: colors.primary,
+    fontWeight: typography.weights.medium,
     marginTop: 6,
   },
   fieldGroup: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   fieldLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 8,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.medium,
+    color: colors.textTertiary,
+    marginBottom: spacing.sm,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   inputRowError: {
     borderWidth: 1,
-    borderColor: '#FF3B30',
-    borderRadius: 8,
-    padding: 4,
+    borderColor: colors.error,
+    borderRadius: radii.md,
+    padding: spacing.xs,
   },
   weightInput: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.inputBackground,
     padding: 14,
-    borderRadius: 8,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    borderRadius: radii.md,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   unitToggle: {
     flexDirection: 'row',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+    borderRadius: radii.md,
     overflow: 'hidden',
   },
   unitButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 14,
   },
   unitButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.primary,
   },
   unitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.textTertiary,
   },
   unitButtonTextActive: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   dimensionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   dimensionInput: {
     flex: 1,
     alignItems: 'center',
   },
   dimensionLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginBottom: spacing.xs,
   },
   dimensionField: {
     width: '100%',
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
     textAlign: 'center',
   },
   dimensionSeparator: {
-    fontSize: 16,
-    color: '#999',
-    marginTop: 16,
+    fontSize: typography.sizes.button,
+    color: colors.textMuted,
+    marginTop: spacing.lg,
   },
   errorText: {
-    fontSize: 12,
-    color: '#FF3B30',
-    marginTop: 8,
+    fontSize: typography.sizes.sm,
+    color: colors.error,
+    marginTop: spacing.sm,
   },
   displayText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 8,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginTop: spacing.sm,
     fontStyle: 'italic',
   },
   packagingInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
     gap: 10,
   },
   packagingBadge: {
-    backgroundColor: '#E3F2FF',
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.lg,
   },
   packagingBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#007AFF',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
   },
   confidenceText: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.medium,
   },
   aiAppliedBanner: {
-    backgroundColor: '#E8F8EC',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 12,
+    backgroundColor: colors.successLight,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    marginBottom: spacing.md,
   },
   aiAppliedText: {
-    fontSize: 12,
+    fontSize: typography.sizes.sm,
     color: '#2D7A3A',
     fontStyle: 'italic',
   },
   resetButton: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: colors.surfaceSecondary,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radii.md,
     alignItems: 'center',
   },
   resetButtonText: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
+    fontSize: typography.sizes.body,
+    color: colors.primary,
+    fontWeight: typography.weights.medium,
   },
 });

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import type { ItemAspectsMetadata, AspectDefinition } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
 
 interface Props {
   metadata: ItemAspectsMetadata | null;
@@ -36,7 +37,7 @@ export default function ItemSpecificsEditor({
           <Text style={styles.sectionTitle}>Item Specifics</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#007AFF" />
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.loadingText}>Loading category requirements...</Text>
         </View>
       </View>
@@ -107,7 +108,7 @@ export default function ItemSpecificsEditor({
             value={value}
             onChangeText={(text) => onChange(aspect.name, text)}
             placeholder={`Enter ${aspect.name.toLowerCase()}`}
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.textMuted}
             maxLength={aspect.maxLength}
           />
           {isMissing && (
@@ -178,7 +179,7 @@ export default function ItemSpecificsEditor({
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   placeholder="Search..."
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textMuted}
                   autoFocus
                 />
               </View>
@@ -223,65 +224,65 @@ export default function ItemSpecificsEditor({
 
 const styles = StyleSheet.create({
   section: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   loadingText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 8,
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    marginLeft: spacing.sm,
   },
   missingBadge: {
-    backgroundColor: '#FF3B30',
-    paddingHorizontal: 8,
+    backgroundColor: colors.error,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 10,
   },
   missingBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   aspectGroup: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   groupLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 8,
-    marginBottom: 8,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+    color: colors.textTertiary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   aspectRow: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   aspectRowError: {
     backgroundColor: '#FFF5F5',
-    padding: 12,
-    marginHorizontal: -12,
-    borderRadius: 8,
+    padding: spacing.md,
+    marginHorizontal: -spacing.md,
+    borderRadius: radii.md,
   },
   aspectLabelContainer: {
     flexDirection: 'row',
@@ -289,14 +290,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   aspectLabel: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    fontWeight: typography.weights.medium,
   },
   requiredBadge: {
     fontSize: 10,
-    color: '#FF9500',
-    fontWeight: '600',
+    color: colors.warning,
+    fontWeight: typography.weights.semibold,
     marginLeft: 6,
     textTransform: 'uppercase',
   },
@@ -304,50 +305,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radii.md,
   },
   aspectValue: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: typography.sizes.input,
+    color: colors.text,
     flex: 1,
   },
   aspectValuePlaceholder: {
-    color: '#999',
+    color: colors.textMuted,
   },
   aspectValueError: {
-    color: '#FF3B30',
+    color: colors.error,
   },
   chevron: {
-    fontSize: 18,
-    color: '#999',
-    marginLeft: 8,
+    fontSize: typography.sizes.title,
+    color: colors.textMuted,
+    marginLeft: spacing.sm,
   },
   textInput: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 15,
-    color: '#333',
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    fontSize: typography.sizes.input,
+    color: colors.text,
   },
   textInputError: {
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: colors.error,
   },
   errorHint: {
-    fontSize: 12,
-    color: '#FF3B30',
-    marginTop: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.error,
+    marginTop: spacing.xs,
   },
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '70%',
@@ -356,29 +357,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   modalCancel: {
-    fontSize: 16,
-    color: '#007AFF',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
   },
   searchContainer: {
-    padding: 12,
+    padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   searchInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.inputBackground,
     padding: 10,
-    borderRadius: 8,
-    fontSize: 15,
+    borderRadius: radii.md,
+    fontSize: typography.sizes.input,
   },
   optionsList: {
     paddingBottom: 34,
@@ -387,31 +388,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   optionRowSelected: {
-    backgroundColor: '#E3F2FF',
+    backgroundColor: colors.primaryLight,
   },
   optionText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: typography.sizes.button,
+    color: colors.text,
     flex: 1,
   },
   optionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   checkmark: {
-    fontSize: 18,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: typography.sizes.title,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   noResults: {
-    padding: 20,
+    padding: spacing.xl,
     textAlign: 'center',
-    color: '#666',
-    fontSize: 14,
+    color: colors.textTertiary,
+    fontSize: typography.sizes.body,
   },
 });

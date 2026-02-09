@@ -10,6 +10,8 @@ import {
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { colors, spacing, typography, radii } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, Card, StatusChip } from '../components/ui';
 
 interface CameraScreenProps {
   navigation: any;
@@ -84,7 +86,7 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer edges={[]} noPadding>
       <ScrollView style={styles.scrollView}>
         <Text style={styles.title}>Add Photos</Text>
         <Text style={styles.subtitle}>Take 1-5 photos of your item</Text>
@@ -117,11 +119,7 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
 
         <Text style={styles.sectionTitle}>Platform</Text>
         <View style={styles.platformButtons}>
-          <View style={[styles.platformButton, styles.platformButtonActive]}>
-            <Text style={[styles.platformButtonText, styles.platformButtonTextActive]}>
-              eBay
-            </Text>
-          </View>
+          <StatusChip label="eBay" status="info" />
         </View>
 
         <TouchableOpacity
@@ -134,57 +132,52 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
         </TouchableOpacity>
 
         {showHints && (
-          <View style={styles.hintsContainer}>
+          <Card style={styles.hintsCard}>
             <Text style={styles.hintLabel}>Brand (if known)</Text>
             <TextInput
               style={styles.hintInput}
               value={brand}
               onChangeText={setBrand}
               placeholder="e.g., Nike, Gucci"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.textMuted}
             />
-          </View>
+          </Card>
         )}
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.generateButton, photos.length === 0 && styles.generateButtonDisabled]}
+        <PrimaryButton
+          title="Generate Listing"
           onPress={handleGenerate}
           disabled={photos.length === 0}
-        >
-          <Text style={styles.generateButtonText}>Generate Listing</Text>
-        </TouchableOpacity>
+          size="lg"
+        />
       </View>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
   scrollView: {
     flex: 1,
-    padding: 20,
+    padding: spacing.xl,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: typography.sizes.large,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 20,
+    fontSize: typography.sizes.button,
+    color: colors.textTertiary,
+    marginBottom: spacing.xl,
   },
   photosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
   },
   photoContainer: {
     position: 'relative',
@@ -192,7 +185,7 @@ const styles = StyleSheet.create({
   photo: {
     width: 100,
     height: 100,
-    borderRadius: 8,
+    borderRadius: radii.md,
   },
   removeButton: {
     position: 'absolute',
@@ -201,14 +194,14 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#FF3B30',
+    backgroundColor: colors.error,
     justifyContent: 'center',
     alignItems: 'center',
   },
   removeButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: colors.textInverse,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.bold,
     marginTop: -2,
   },
   addPhotoButtons: {
@@ -218,101 +211,64 @@ const styles = StyleSheet.create({
   addPhotoButton: {
     width: 100,
     height: 100,
-    borderRadius: 8,
+    borderRadius: radii.md,
     borderWidth: 2,
-    borderColor: '#ddd',
+    borderColor: colors.borderMedium,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   addPhotoIcon: {
     fontSize: 28,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   addPhotoText: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.md,
   },
   platformButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  platformButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#ddd',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  platformButtonActive: {
-    borderColor: '#007AFF',
-    backgroundColor: '#007AFF',
-  },
-  platformButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
-  platformButtonTextActive: {
-    color: '#fff',
+    gap: spacing.md,
+    marginBottom: spacing.xxl,
   },
   hintsToggle: {
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   hintsToggleText: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
+    fontSize: typography.sizes.body,
+    color: colors.primary,
+    fontWeight: typography.weights.medium,
   },
-  hintsContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 8,
+  hintsCard: {
+    marginHorizontal: 0,
+    marginTop: spacing.sm,
   },
   hintLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.medium,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   hintInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+    borderColor: colors.borderMedium,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.button,
+    color: colors.text,
   },
   footer: {
-    padding: 20,
+    padding: spacing.xl,
     paddingBottom: 34,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  generateButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  generateButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  generateButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    borderTopColor: colors.border,
   },
 });

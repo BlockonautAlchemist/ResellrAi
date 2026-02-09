@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { suggestCategory, type CategorySuggestion, type AiCategorySuggestion } from '../lib/api';
+import { colors, spacing, typography, radii } from '../lib/theme';
 
 interface CategoryPickerProps {
   value?: {
@@ -84,9 +85,9 @@ export default function CategoryPicker({
   };
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return '#34C759';
-    if (confidence >= 0.5) return '#FF9500';
-    return '#FF3B30';
+    if (confidence >= 0.8) return colors.success;
+    if (confidence >= 0.5) return colors.warning;
+    return colors.error;
   };
 
   const getConfidenceLabel = (confidence: number) => {
@@ -98,13 +99,13 @@ export default function CategoryPicker({
   const getRelevanceColor = (relevance: string) => {
     switch (relevance) {
       case 'HIGH':
-        return '#34C759';
+        return colors.success;
       case 'MEDIUM':
-        return '#FF9500';
+        return colors.warning;
       case 'LOW':
-        return '#999';
+        return colors.textMuted;
       default:
-        return '#999';
+        return colors.textMuted;
     }
   };
 
@@ -156,7 +157,7 @@ export default function CategoryPicker({
 
         {isLoadingAi ? (
           <View style={styles.aiLoadingContainer}>
-            <ActivityIndicator size="small" color="#007AFF" />
+            <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.aiLoadingText}>AI selecting category...</Text>
           </View>
         ) : aiSuggestion && value ? (
@@ -261,7 +262,7 @@ export default function CategoryPicker({
           {/* Loading State */}
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#007AFF" />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.loadingText}>Searching categories...</Text>
             </View>
           )}
@@ -310,249 +311,249 @@ export default function CategoryPicker({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   changeButton: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.primary,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.medium,
   },
   valueContainer: {
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   categoryValue: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: typography.sizes.input,
+    color: colors.text,
     marginBottom: 2,
   },
   categoryId: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
   },
   placeholder: {
-    fontSize: 15,
-    color: '#999',
+    fontSize: typography.sizes.input,
+    color: colors.textMuted,
   },
   // AI mode styles
   aiLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   aiLoadingText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
   },
   aiPrimaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   aiPrimaryInfo: {
     flex: 1,
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   confidenceBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.lg,
   },
   confidenceText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.textInverse,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   aiReason: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
     fontStyle: 'italic',
   },
   alternativesContainer: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.border,
   },
   alternativesLabel: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 8,
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
   alternativeItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     paddingHorizontal: 10,
-    borderRadius: 6,
-    marginBottom: 4,
-    backgroundColor: '#f9f9f9',
+    borderRadius: radii.sm,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.surfaceTertiary,
   },
   alternativeItemSelected: {
-    backgroundColor: '#E8F4FD',
+    backgroundColor: colors.primaryMuted,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: colors.primary,
   },
   alternativeName: {
-    fontSize: 13,
-    color: '#555',
+    fontSize: typography.sizes.md,
+    color: colors.textSecondary,
     flex: 1,
   },
   confidenceBadgeSmall: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 8,
+    borderRadius: radii.md,
+    marginLeft: spacing.sm,
   },
   confidenceTextSmall: {
-    color: '#fff',
+    color: colors.textInverse,
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   // Modal Styles
   modalContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   modalDone: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   searchContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
   },
   searchInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: colors.inputBackground,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: typography.sizes.input,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    gap: 8,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
   loadingText: {
-    color: '#666',
-    fontSize: 14,
+    color: colors.textTertiary,
+    fontSize: typography.sizes.body,
   },
   errorContainer: {
-    padding: 16,
-    backgroundColor: '#FFE5E5',
-    marginHorizontal: 16,
-    borderRadius: 8,
+    padding: spacing.lg,
+    backgroundColor: colors.errorLight,
+    marginHorizontal: spacing.lg,
+    borderRadius: radii.md,
   },
   errorText: {
-    color: '#FF3B30',
-    fontSize: 14,
+    color: colors.error,
+    fontSize: typography.sizes.body,
     textAlign: 'center',
   },
   listContent: {
-    padding: 16,
+    padding: spacing.lg,
   },
   categoryItem: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 14,
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: radii.md,
+    marginBottom: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
   },
   categoryItemSelected: {
-    backgroundColor: '#E8F4FD',
+    backgroundColor: colors.primaryMuted,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: colors.primary,
   },
   categoryContent: {
     flex: 1,
   },
   categoryName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: typography.sizes.input,
+    fontWeight: typography.weights.medium,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
   categoryPath: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
   },
   categoryMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   relevanceBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 3,
     borderRadius: 10,
   },
   relevanceText: {
-    color: '#fff',
+    color: colors.textInverse,
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   checkmark: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: 40,
-    paddingHorizontal: 32,
+    paddingHorizontal: spacing.xxxl,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
   },
   tipContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.border,
   },
   tipText: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
     textAlign: 'center',
   },
 });

@@ -31,6 +31,8 @@ import {
 import CategoryPicker from '../components/CategoryPicker';
 import ItemSpecificsEditor from '../components/ItemSpecificsEditor';
 import WeightInput from '../components/WeightInput';
+import { colors, spacing, typography, radii } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, Card } from '../components/ui';
 
 // Default condition options (used before category is selected or if API fails)
 const DEFAULT_CONDITION_OPTIONS: CategoryCondition[] = [
@@ -123,19 +125,12 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   // Guard: show fallback UI if no listing data
   if (!initialListing) {
     return (
-      <View style={styles.container}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Text style={{ fontSize: 16, color: '#666', marginBottom: 16, textAlign: 'center' }}>
-            No listing data available
-          </Text>
-          <TouchableOpacity
-            style={{ backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
-            onPress={() => navigation.navigate('Home')}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Go Home</Text>
-          </TouchableOpacity>
+      <ScreenContainer edges={[]} noPadding>
+        <View style={styles.fallbackContainer}>
+          <Text style={styles.fallbackText}>No listing data available</Text>
+          <PrimaryButton title="Go Home" onPress={() => navigation.navigate('Home')} />
         </View>
-      </View>
+      </ScreenContainer>
     );
   }
 
@@ -415,7 +410,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     setIsRegenerating(field);
     try {
       const updated = await regenerateField(initialListing.itemId, field);
-      
+
       if (field === 'title' && updated.listing_draft) {
         setTitle(updated.listing_draft.title.value);
       } else if (field === 'description' && updated.listing_draft) {
@@ -493,13 +488,13 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   };
 
   const confidenceColor = (confidence: number) => {
-    if (confidence >= 0.85) return '#34C759';
-    if (confidence >= 0.6) return '#FF9500';
-    return '#FF3B30';
+    if (confidence >= 0.85) return colors.success;
+    if (confidence >= 0.6) return colors.warning;
+    return colors.error;
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer edges={[]} noPadding>
       <ScrollView style={styles.scrollView}>
         {/* Photos */}
         <ScrollView horizontal style={styles.photosRow} showsHorizontalScrollIndicator={false}>
@@ -510,13 +505,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
 
         {/* Platform Badge */}
         <View style={styles.platformBadge}>
-          <Text style={styles.platformBadgeText}>
-            eBay
-          </Text>
+          <Text style={styles.platformBadgeText}>eBay</Text>
         </View>
 
         {/* Title */}
-        <View style={styles.section}>
+        <Card>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Title</Text>
             <View style={styles.sectionActions}>
@@ -532,7 +525,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
                 disabled={isRegenerating === 'title'}
               >
                 {isRegenerating === 'title' ? (
-                  <ActivityIndicator size="small" color="#007AFF" />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <Text style={styles.actionText}>Regenerate</Text>
                 )}
@@ -550,10 +543,10 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             <Text style={styles.titleText}>{title}</Text>
           )}
           <Text style={styles.charCount}>{title.length}/80 characters</Text>
-        </View>
+        </Card>
 
         {/* Description */}
-        <View style={styles.section}>
+        <Card>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Description</Text>
             <View style={styles.sectionActions}>
@@ -569,7 +562,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
                 disabled={isRegenerating === 'description'}
               >
                 {isRegenerating === 'description' ? (
-                  <ActivityIndicator size="small" color="#007AFF" />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <Text style={styles.actionText}>Regenerate</Text>
                 )}
@@ -586,7 +579,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           ) : (
             <Text style={styles.descriptionText}>{description}</Text>
           )}
-        </View>
+        </Card>
 
         {/* Category */}
         <CategoryPicker
@@ -598,7 +591,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         />
 
         {/* Pricing */}
-        <View style={styles.section}>
+        <Card>
           <Text style={styles.sectionTitle}>Suggested Price</Text>
           <View style={styles.priceButtons}>
             <TouchableOpacity
@@ -636,13 +629,18 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           <Text style={styles.disclaimer}>{pricing.disclaimer}</Text>
 
           {/* View Comps Button */}
-          <TouchableOpacity style={styles.viewCompsButton} onPress={handleViewComps}>
-            <Text style={styles.viewCompsText}>View Price Comparables</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.compsButtonContainer}>
+            <PrimaryButton
+              title="View Price Comparables"
+              onPress={handleViewComps}
+              variant="secondary"
+              size="sm"
+            />
+          </View>
+        </Card>
 
         {/* Attributes */}
-        <View style={styles.section}>
+        <Card>
           <Text style={styles.sectionTitle}>Attributes</Text>
           {initialListing.listingDraft.attributes.map((attr, index) => (
             <View key={index} style={styles.attributeRow}>
@@ -650,15 +648,15 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
               <Text style={styles.attributeValue}>{attr.value}</Text>
             </View>
           ))}
-        </View>
+        </Card>
 
         {/* Item Specifics (eBay category-specific) */}
         {!selectedCategory?.categoryId && !isLoadingAspects ? (
-          <View style={styles.section}>
+          <Card>
             <Text style={styles.conditionHint}>
               Select a category to see item specifics
             </Text>
-          </View>
+          </Card>
         ) : (
           <ItemSpecificsEditor
             metadata={itemAspectsMetadata}
@@ -684,11 +682,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         />
 
         {/* Condition */}
-        <View style={styles.section}>
+        <Card>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Condition</Text>
             {(isUpdatingCondition || isLoadingConditions) && (
-              <ActivityIndicator size="small" color="#007AFF" />
+              <ActivityIndicator size="small" color={colors.primary} />
             )}
           </View>
           <TouchableOpacity
@@ -719,7 +717,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
               AI detected: {initialListing.listingDraft.condition.value}
             </Text>
           )}
-        </View>
+        </Card>
 
         {/* Condition Picker Modal */}
         <Modal
@@ -738,7 +736,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
               </View>
               {isLoadingConditions ? (
                 <View style={styles.conditionLoading}>
-                  <ActivityIndicator size="large" color="#007AFF" />
+                  <ActivityIndicator size="large" color={colors.primary} />
                   <Text style={styles.conditionLoadingText}>Loading conditions...</Text>
                 </View>
               ) : !selectedCategory?.categoryId ? (
@@ -799,204 +797,187 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
 
       {/* Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
-          <Text style={styles.exportButtonText}>Export Listing (${selectedPrice})</Text>
-        </TouchableOpacity>
+        <PrimaryButton
+          title={`Export Listing ($${selectedPrice})`}
+          onPress={handleExport}
+          variant="success"
+          size="lg"
+        />
       </View>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
   scrollView: {
     flex: 1,
   },
   photosRow: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
   photo: {
     width: 120,
     height: 120,
-    borderRadius: 8,
-    marginRight: 8,
+    borderRadius: radii.md,
+    marginRight: spacing.sm,
   },
   platformBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 16,
-    marginTop: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.lg,
+    marginLeft: spacing.lg,
+    marginTop: spacing.md,
   },
   platformBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  section: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
+    color: colors.textInverse,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   sectionActions: {
     flexDirection: 'row',
-    gap: 16,
+    gap: spacing.lg,
   },
   actionText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.primary,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.medium,
   },
   titleText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
     lineHeight: 24,
   },
   descriptionText: {
-    fontSize: 15,
-    color: '#555',
+    fontSize: typography.sizes.input,
+    color: colors.textSecondary,
     lineHeight: 22,
   },
   editInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 15,
-    color: '#333',
+    borderColor: colors.borderMedium,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.input,
+    color: colors.text,
   },
   descriptionInput: {
     minHeight: 120,
     textAlignVertical: 'top',
   },
   charCount: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 8,
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   priceButtons: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   priceButton: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radii.md,
     alignItems: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
   },
   priceButtonActive: {
-    borderColor: '#007AFF',
-    backgroundColor: '#E3F2FF',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   priceLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginBottom: spacing.xs,
   },
   priceValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   priceBasis: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 12,
+    fontSize: typography.sizes.md,
+    color: colors.textTertiary,
+    marginTop: spacing.md,
     fontStyle: 'italic',
   },
   disclaimer: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 8,
+    fontSize: typography.sizes.xs,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
-  viewCompsButton: {
-    backgroundColor: '#E3F2FF',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  viewCompsText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
+  compsButtonContainer: {
+    marginTop: spacing.lg,
   },
   attributeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   attributeKey: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
   },
   attributeValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: typography.sizes.body,
+    color: colors.text,
+    fontWeight: typography.weights.medium,
   },
   conditionSelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.inputBackground,
     padding: 14,
-    borderRadius: 8,
+    borderRadius: radii.md,
   },
   conditionSelectorDisabled: {
     opacity: 0.6,
   },
   conditionValue: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: typography.sizes.button,
+    color: colors.text,
+    fontWeight: typography.weights.medium,
   },
   conditionValueDisabled: {
-    color: '#999',
+    color: colors.textMuted,
   },
   conditionChevron: {
     fontSize: 20,
-    color: '#999',
+    color: colors.textMuted,
   },
   conditionHint: {
-    fontSize: 12,
-    color: '#FF9500',
-    marginTop: 8,
+    fontSize: typography.sizes.sm,
+    color: colors.warning,
+    marginTop: spacing.sm,
     fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '60%',
@@ -1005,18 +986,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   modalCancel: {
-    fontSize: 16,
-    color: '#007AFF',
+    fontSize: typography.sizes.button,
+    color: colors.primary,
   },
   conditionList: {
     paddingBottom: 34,
@@ -1025,32 +1006,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   conditionOptionSelected: {
-    backgroundColor: '#E3F2FF',
+    backgroundColor: colors.primaryLight,
   },
   conditionOptionText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: typography.sizes.button,
+    color: colors.text,
   },
   conditionOptionTextSelected: {
-    color: '#007AFF',
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   conditionCheck: {
-    fontSize: 18,
-    color: '#007AFF',
-    fontWeight: '600',
+    fontSize: typography.sizes.title,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   conditionOptionContent: {
     flex: 1,
   },
   conditionOptionDescription: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
     marginTop: 2,
   },
   conditionLoading: {
@@ -1059,44 +1040,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   conditionLoadingText: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 12,
+    fontSize: typography.sizes.body,
+    color: colors.textTertiary,
+    marginTop: spacing.md,
     textAlign: 'center',
   },
   conditionErrorBanner: {
-    backgroundColor: '#FFF3CD',
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 8,
+    backgroundColor: colors.warningLight,
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    borderRadius: radii.md,
   },
   conditionErrorText: {
-    fontSize: 13,
-    color: '#856404',
+    fontSize: typography.sizes.md,
+    color: colors.warningDark,
   },
   processingTime: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
     textAlign: 'center',
-    marginVertical: 16,
+    marginVertical: spacing.lg,
   },
   footer: {
-    padding: 16,
+    padding: spacing.lg,
     paddingBottom: 34,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.border,
   },
-  exportButton: {
-    backgroundColor: '#34C759',
-    paddingVertical: 16,
-    borderRadius: 12,
+  fallbackContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
   },
-  exportButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+  fallbackText: {
+    fontSize: typography.sizes.button,
+    color: colors.textTertiary,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
   },
 });

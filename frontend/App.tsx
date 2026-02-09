@@ -11,6 +11,7 @@ import ListingPreviewScreen from './screens/ListingPreviewScreen';
 import ExportScreen from './screens/ExportScreen';
 import CompsScreen from './screens/CompsScreen';
 import { API_URL } from './lib/supabase';
+import { colors, typography } from './lib/theme';
 
 const Stack = createNativeStackNavigator();
 
@@ -123,11 +124,11 @@ export default function App() {
         initialRouteName="Home"
         screenOptions={{
           headerStyle: {
-            backgroundColor: '#fff',
+            backgroundColor: colors.surface,
           },
-          headerTintColor: '#007AFF',
+          headerTintColor: colors.primary,
           headerTitleStyle: {
-            fontWeight: '600',
+            fontWeight: typography.weights.semibold,
           },
           headerShadowVisible: false,
         }}

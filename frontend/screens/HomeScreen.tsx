@@ -13,6 +13,8 @@ import {
 import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, type EbayConnectionStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
+import { colors, spacing, typography, radii, shadows } from '../lib/theme';
+import { ScreenContainer, PrimaryButton, Card, StatusChip, TierBadge } from '../components/ui';
 
 interface HomeScreenProps {
   navigation: any;
@@ -70,7 +72,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   }, [route.params]);
 
-  // Listen for app state changes (background → foreground)
+  // Listen for app state changes (background -> foreground)
   // This handles the case where user returns from browser after OAuth
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -195,212 +197,136 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>ResellrAI</Text>
         <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
       </View>
 
+      <TierBadge isPremium={!!ebayConnection?.connected} />
+
       <View style={styles.statusContainer}>
         {!apiConfigured ? (
-          <Text style={styles.statusDisconnected}>API Not Configured</Text>
+          <StatusChip label="API Not Configured" status="error" />
         ) : apiConnected === null ? (
-          <ActivityIndicator size="small" color="#007AFF" />
+          <ActivityIndicator size="small" color={colors.primary} />
         ) : apiConnected ? (
-          <Text style={styles.statusConnected}>API Connected</Text>
+          <StatusChip label="API Connected" status="success" />
         ) : (
-          <Text style={styles.statusDisconnected}>API Disconnected</Text>
+          <StatusChip label="API Disconnected" status="error" />
         )}
       </View>
 
-      <TouchableOpacity
-        style={[styles.button, !apiConnected && styles.buttonDisabled]}
-        onPress={() => navigation.navigate('Camera')}
-        disabled={!apiConnected}
-      >
-        <Text style={styles.buttonText}>New Listing</Text>
-      </TouchableOpacity>
+      <View style={styles.buttonContainer}>
+        <PrimaryButton
+          title="New Listing"
+          onPress={() => navigation.navigate('Camera')}
+          disabled={!apiConnected}
+          size="lg"
+        />
+      </View>
 
       {/* eBay Connection */}
       {ebayAvailable && (
-        <TouchableOpacity
-          style={[
-            styles.ebayButton,
-            ebayConnection?.connected && styles.ebayButtonConnected,
-            (isConnectingEbay || isRefreshingEbay) && styles.buttonDisabled,
-          ]}
-          onPress={handleConnectEbay}
-          disabled={isConnectingEbay || isRefreshingEbay}
-        >
-          {isConnectingEbay || isRefreshingEbay ? (
-            <View style={styles.ebayLoadingContainer}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.ebayLoadingText}>
-                {isConnectingEbay ? 'Connecting...' : 'Verifying...'}
-              </Text>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.ebayButtonText}>
-                {ebayConnection?.connected ? 'eBay Connected' : 'Connect eBay'}
-              </Text>
-              {ebayConnection?.connected && (
-                <Text style={styles.ebayUsername}>
-                  {ebayConnection.ebay_username || 'Tap to manage'}
-                </Text>
-              )}
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.ebayButtonContainer}>
+          <PrimaryButton
+            title={ebayConnection?.connected ? 'eBay Connected' : 'Connect eBay'}
+            subtitle={ebayConnection?.connected ? (ebayConnection.ebay_username || 'Tap to manage') : undefined}
+            onPress={handleConnectEbay}
+            disabled={isConnectingEbay || isRefreshingEbay}
+            loading={isConnectingEbay || isRefreshingEbay}
+            variant={ebayConnection?.connected ? 'success' : 'ebay'}
+          />
+        </View>
       )}
 
-      <View style={styles.features}>
+      <Card elevated>
         <Text style={styles.featureTitle}>How it works:</Text>
         <View style={styles.featureItem}>
-          <Text style={styles.featureNumber}>1</Text>
+          <View style={styles.featureNumberCircle}>
+            <Text style={styles.featureNumber}>1</Text>
+          </View>
           <Text style={styles.featureText}>Take photos of your item</Text>
         </View>
         <View style={styles.featureItem}>
-          <Text style={styles.featureNumber}>2</Text>
+          <View style={styles.featureNumberCircle}>
+            <Text style={styles.featureNumber}>2</Text>
+          </View>
           <Text style={styles.featureText}>AI generates title, description, and price</Text>
         </View>
         <View style={styles.featureItem}>
-          <Text style={styles.featureNumber}>3</Text>
+          <View style={styles.featureNumberCircle}>
+            <Text style={styles.featureNumber}>3</Text>
+          </View>
           <Text style={styles.featureText}>Edit, confirm, and copy to clipboard</Text>
         </View>
-      </View>
+      </Card>
 
       <Text style={styles.version}>v0.3.0 - eBay Integration</Text>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-  },
   header: {
     alignItems: 'center',
-    marginTop: 60,
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: typography.sizes.hero,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
+    fontSize: typography.sizes.button,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
   },
   statusContainer: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: spacing.xxxl,
   },
-  statusConnected: {
-    color: '#34C759',
-    fontSize: 14,
-    fontWeight: '600',
+  buttonContainer: {
+    marginBottom: spacing.xxxl + spacing.sm,
   },
-  statusDisconnected: {
-    color: '#FF3B30',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  ebayButton: {
-    backgroundColor: '#e53238',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 20,
-    flexDirection: 'column',
-  },
-  ebayButtonConnected: {
-    backgroundColor: '#34C759',
-  },
-  ebayButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  ebayUsername: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  ebayLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ebayLoadingText: {
-    color: '#fff',
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  features: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  ebayButtonContainer: {
+    marginBottom: spacing.xl,
   },
   featureTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.lg,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
-  featureNumber: {
+  featureNumberCircle: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#007AFF',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 28,
-    marginRight: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  featureNumber: {
+    color: colors.textInverse,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
   },
   featureText: {
-    fontSize: 15,
-    color: '#555',
+    fontSize: typography.sizes.input,
+    color: colors.textSecondary,
     flex: 1,
   },
   version: {
     position: 'absolute',
     bottom: 30,
     alignSelf: 'center',
-    fontSize: 12,
-    color: '#999',
+    fontSize: typography.sizes.sm,
+    color: colors.textMuted,
   },
 });
