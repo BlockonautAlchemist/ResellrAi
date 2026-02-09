@@ -11,10 +11,10 @@ import {
   AppStateStatus,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, type EbayConnectionStatus } from '../lib/api';
+import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, getUsageStatus, type EbayConnectionStatus, type UsageStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
-import { ScreenContainer, PrimaryButton, Card, StatusChip, TierBadge } from '../components/ui';
+import { ScreenContainer, PrimaryButton, Card, StatusChip, TierBadge, UsageCard } from '../components/ui';
 
 interface HomeScreenProps {
   navigation: any;
@@ -34,7 +34,13 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [ebayAvailable, setEbayAvailable] = useState(false);
   const [isConnectingEbay, setIsConnectingEbay] = useState(false);
   const [isRefreshingEbay, setIsRefreshingEbay] = useState(false);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
   const apiConfigured = isApiConfigured();
+  const isAtFreeLimit = usageStatus && !usageStatus.isPremium && (
+    usageStatus.dailyUsed >= usageStatus.dailyLimit ||
+    usageStatus.monthlyUsed >= usageStatus.monthlyLimit
+  );
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
 
@@ -100,21 +106,35 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     };
   }, [apiConnected]);
 
-  // Re-check eBay status when screen comes into focus
+  // Re-check eBay status and usage when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (apiConnected) {
         checkEbayStatus();
+        fetchUsageStatus();
       }
     });
     return unsubscribe;
   }, [navigation, apiConnected]);
+
+  const fetchUsageStatus = async () => {
+    try {
+      setUsageLoading(true);
+      const status = await getUsageStatus();
+      setUsageStatus(status);
+    } catch (err) {
+      console.warn('[HomeScreen] Failed to fetch usage status:', err);
+    } finally {
+      setUsageLoading(false);
+    }
+  };
 
   const checkApi = async () => {
     const connected = await testConnection();
     setApiConnected(connected);
     if (connected) {
       checkEbayStatus();
+      fetchUsageStatus();
     }
   };
 
@@ -203,7 +223,19 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
         <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
       </View>
 
-      <TierBadge isPremium={!!ebayConnection?.connected} />
+      {ebayConnection?.connected ? (
+        <TierBadge isPremium={true} />
+      ) : usageStatus && !usageStatus.isPremium ? (
+        <UsageCard
+          dailyUsed={usageStatus.dailyUsed}
+          dailyLimit={usageStatus.dailyLimit}
+          monthlyUsed={usageStatus.monthlyUsed}
+          monthlyLimit={usageStatus.monthlyLimit}
+          loading={usageLoading}
+        />
+      ) : (
+        <TierBadge isPremium={false} />
+      )}
 
       <View style={styles.statusContainer}>
         {!apiConfigured ? (
@@ -221,9 +253,16 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
         <PrimaryButton
           title="New Listing"
           onPress={() => navigation.navigate('Camera')}
-          disabled={!apiConnected}
+          disabled={!apiConnected || !!isAtFreeLimit}
           size="lg"
         />
+        {isAtFreeLimit && (
+          <Text style={styles.limitNote}>
+            {usageStatus!.dailyUsed >= usageStatus!.dailyLimit
+              ? 'Daily free limit reached — resets tomorrow'
+              : 'Monthly free limit reached — resets next month'}
+          </Text>
+        )}
       </View>
 
       {/* eBay Connection */}
@@ -321,6 +360,12 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.input,
     color: colors.textSecondary,
     flex: 1,
+  },
+  limitNote: {
+    fontSize: typography.sizes.md,
+    color: colors.warning,
+    textAlign: 'center' as const,
+    marginTop: spacing.sm,
   },
   version: {
     position: 'absolute',

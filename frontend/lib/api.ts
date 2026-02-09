@@ -56,6 +56,33 @@ export class UsageLimitError extends Error {
 }
 
 // =============================================================================
+// Usage Status
+// =============================================================================
+
+export interface UsageStatus {
+  allowed: boolean;
+  isPremium: boolean;
+  dailyUsed: number;
+  dailyLimit: number;
+  monthlyUsed: number;
+  monthlyLimit: number;
+  resetAt: string;
+  limitType?: 'daily' | 'monthly';
+}
+
+export async function getUsageStatus(): Promise<UsageStatus> {
+  const apiUrl = getApiUrlOrThrow();
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/usage/status`, {
+    headers: identityHeaders,
+  });
+  if (!response.ok) {
+    throw new Error(`Usage status failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// =============================================================================
 // Types (matching backend schemas)
 // =============================================================================
 

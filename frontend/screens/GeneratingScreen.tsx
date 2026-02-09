@@ -93,11 +93,13 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
           <View style={styles.limitIconCircle}>
             <Text style={styles.limitIconText}>!</Text>
           </View>
-          <Text style={styles.limitTitle}>Free Limit Reached</Text>
+          <Text style={styles.limitTitle}>
+            {isDaily ? 'Daily Limit Reached' : 'Monthly Limit Reached'}
+          </Text>
           <Text style={styles.limitMessage}>
             {isDaily
-              ? `You've used ${limitError.dailyUsed}/${limitError.dailyLimit} listings today.`
-              : `You've used ${limitError.monthlyUsed}/${limitError.monthlyLimit} listings this month.`}
+              ? `You've used ${Math.min(limitError.dailyUsed, limitError.dailyLimit)}/${limitError.dailyLimit} listings today.`
+              : `You've used ${Math.min(limitError.monthlyUsed, limitError.monthlyLimit)}/${limitError.monthlyLimit} listings this month.`}
           </Text>
           <Text style={styles.limitSubtext}>
             Connect your eBay account for unlimited listings.
