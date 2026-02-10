@@ -48,6 +48,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
   },
   title: {
     fontSize: typography.sizes.body,
@@ -73,7 +74,7 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
   },
   button: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.md,
