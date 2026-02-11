@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  TextInput,
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, radii } from '../lib/theme';
-import { ScreenContainer, PrimaryButton, Card, StatusChip } from '../components/ui';
+import { ScreenContainer, PrimaryButton, StatusChip } from '../components/ui';
 
 interface CameraScreenProps {
   navigation: any;
@@ -20,8 +20,6 @@ interface CameraScreenProps {
 export default function CameraScreen({ navigation }: CameraScreenProps) {
   const [photos, setPhotos] = useState<string[]>([]);
   const platform = 'ebay' as const;
-  const [brand, setBrand] = useState('');
-  const [showHints, setShowHints] = useState(false);
 
   const pickImage = async () => {
     if (photos.length >= 5) {
@@ -81,7 +79,6 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
     navigation.navigate('Generating', {
       photos,
       platform,
-      userHints: brand ? { brand } : undefined,
     });
   };
 
@@ -106,11 +103,11 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
           {photos.length < 5 && (
             <View style={styles.addPhotoButtons}>
               <TouchableOpacity style={styles.addPhotoButton} onPress={takePhoto}>
-                <Text style={styles.addPhotoIcon}>📷</Text>
+                <Feather name="camera" size={28} color={colors.textTertiary} style={styles.addPhotoIcon} />
                 <Text style={styles.addPhotoText}>Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.addPhotoButton} onPress={pickImage}>
-                <Text style={styles.addPhotoIcon}>🖼️</Text>
+                <Feather name="image" size={28} color={colors.textTertiary} style={styles.addPhotoIcon} />
                 <Text style={styles.addPhotoText}>Gallery</Text>
               </TouchableOpacity>
             </View>
@@ -122,27 +119,6 @@ export default function CameraScreen({ navigation }: CameraScreenProps) {
           <StatusChip label="eBay" status="info" />
         </View>
 
-        <TouchableOpacity
-          style={styles.hintsToggle}
-          onPress={() => setShowHints(!showHints)}
-        >
-          <Text style={styles.hintsToggleText}>
-            {showHints ? '▼ Hide Hints' : '▶ Add Hints (Optional)'}
-          </Text>
-        </TouchableOpacity>
-
-        {showHints && (
-          <Card style={styles.hintsCard}>
-            <Text style={styles.hintLabel}>Brand (if known)</Text>
-            <TextInput
-              style={styles.hintInput}
-              value={brand}
-              onChangeText={setBrand}
-              placeholder="e.g., Nike, Gucci"
-              placeholderTextColor={colors.textMuted}
-            />
-          </Card>
-        )}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -220,7 +196,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   addPhotoIcon: {
-    fontSize: 28,
     marginBottom: spacing.xs,
   },
   addPhotoText: {
@@ -237,32 +212,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     marginBottom: spacing.xxl,
-  },
-  hintsToggle: {
-    paddingVertical: spacing.md,
-  },
-  hintsToggleText: {
-    fontSize: typography.sizes.body,
-    color: colors.primary,
-    fontWeight: typography.weights.medium,
-  },
-  hintsCard: {
-    marginHorizontal: 0,
-    marginTop: spacing.sm,
-  },
-  hintLabel: {
-    fontSize: typography.sizes.body,
-    fontWeight: typography.weights.medium,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  hintInput: {
-    borderWidth: 1,
-    borderColor: colors.borderMedium,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    fontSize: typography.sizes.button,
-    color: colors.text,
   },
   footer: {
     padding: spacing.xl,

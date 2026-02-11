@@ -22,7 +22,7 @@ CRITICAL RULES:
 - If you cannot clearly see or identify something, set confidence below 0.6
 - NEVER fabricate brand names - if unsure, set brand to null
 - NEVER guess model numbers or SKUs
-- For condition, describe visible wear only
+- For condition, describe visible wear only. Most items are pre-owned, so default to "good" unless the item is clearly brand new with tags/packaging
 - Return valid JSON only, no markdown or explanation
 
 Confidence scoring:
@@ -48,7 +48,7 @@ const VISION_USER_PROMPT = `Analyze this item image and return JSON with this ex
   "category": { "value": "detected category", "confidence": 0.0-1.0 },
   "brand": { "value": "brand name or null if unknown", "confidence": 0.0-1.0 },
   "color": { "value": "primary color(s)", "confidence": 0.0-1.0 },
-  "condition": { "value": "new/like_new/good/fair/poor", "confidence": 0.0-1.0 },
+  "condition": { "value": "good/like_new/fair/poor/new", "confidence": 0.0-1.0 },
   "attributes": [
     { "key": "Size", "value": "detected size", "confidence": 0.0-1.0 },
     { "key": "Material", "value": "detected material", "confidence": 0.0-1.0 },

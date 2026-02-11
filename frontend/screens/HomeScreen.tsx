@@ -227,6 +227,14 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  const handleUpgradePress = () => {
+    Alert.alert(
+      'Upgrade to Premium',
+      'Premium unlocks unlimited listings and direct eBay publishing. Contact support to upgrade.',
+      [{ text: 'OK' }]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <LinearGradient
@@ -297,7 +305,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               {shouldShowUpgradeCard && (
                 <View style={styles.cardWrapper}>
                   <UpgradeCard
-                    onUpgrade={handleConnectEbay}
+                    onUpgrade={handleUpgradePress}
                     loading={isConnectingEbay || isRefreshingEbay}
                   />
                 </View>
@@ -305,7 +313,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               {shouldShowPremiumTeaser && (
                 <View style={styles.cardWrapper}>
                   <PremiumTeaser
-                    onPress={handleConnectEbay}
+                    onPress={handleUpgradePress}
                     loading={isConnectingEbay || isRefreshingEbay}
                   />
                 </View>

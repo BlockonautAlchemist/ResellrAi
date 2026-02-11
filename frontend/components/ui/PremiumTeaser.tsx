@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, radii, shadows } from '../../lib/theme';
 
 interface PremiumTeaserProps {
@@ -21,7 +21,7 @@ export default function PremiumTeaser({ onPress, loading }: PremiumTeaserProps) 
       <View style={styles.benefits}>
         {BENEFITS.map((benefit) => (
           <View key={benefit} style={styles.benefitRow}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.success} style={styles.checkIcon} />
+            <Feather name="check-circle" size={20} color={colors.success} style={styles.checkIcon} />
             <Text style={styles.benefitText}>{benefit}</Text>
           </View>
         ))}
