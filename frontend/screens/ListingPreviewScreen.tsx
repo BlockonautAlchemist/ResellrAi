@@ -18,6 +18,7 @@ import {
   getCategoryItemAspects,
   suggestAiCategory,
   autofillItemSpecifics,
+  getUsageStatus,
   type GenerateListingResponse,
   type CategoryCondition,
   type ItemAspectsMetadata,
@@ -26,6 +27,7 @@ import {
   type WeightSuggestion,
   type DimensionsSuggestion,
   type AiCategorySuggestResponse,
+  type UsageStatus,
   PACKAGING_TYPE_LABELS,
 } from '../lib/api';
 import CategoryPicker from '../components/CategoryPicker';
@@ -120,7 +122,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   const [suggestedDimensions, setSuggestedDimensions] = useState<DimensionsSuggestion | null>(null);
   const [userPackageOverride, setUserPackageOverride] = useState(false);
 
+  // Usage status for premium gating (e.g. price comparables)
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+
   const pricing = initialListing?.pricingSuggestion;
+  const isPremium = usageStatus?.isPremium ?? false;
 
   // Guard: show fallback UI if no listing data
   if (!initialListing) {
@@ -140,6 +146,13 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       setSelectedPrice(selectedPriceFromComps);
     }
   }, [selectedPriceFromComps]);
+
+  // Fetch usage status for premium gating (e.g. price comparables)
+  useEffect(() => {
+    getUsageStatus()
+      .then(setUsageStatus)
+      .catch((err) => console.warn('[ListingPreview] Failed to fetch usage status:', err));
+  }, []);
 
   // AI Category Suggestion: auto-suggest category when listing loads
   useEffect(() => {
@@ -399,6 +412,17 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   };
 
   const handleViewComps = () => {
+    if (!isPremium) {
+      Alert.alert(
+        'Premium Feature',
+        'Price comparables are a Premium feature. Upgrade to unlock detailed market insights.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade to Premium', onPress: () => navigation.navigate('Home') },
+        ]
+      );
+      return;
+    }
     navigation.navigate('Comps', {
       keywords: title,
       categoryId: selectedCategory?.categoryId,

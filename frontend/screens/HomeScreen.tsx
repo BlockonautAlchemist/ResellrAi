@@ -230,7 +230,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const handleUpgradePress = () => {
     Alert.alert(
       'Upgrade to Premium',
-      'Premium unlocks unlimited listings and direct eBay publishing. Contact support to upgrade.',
+      'Premium unlocks unlimited listings, direct eBay publishing, and price comparables. Contact support to upgrade.',
       [{ text: 'OK' }]
     );
   };

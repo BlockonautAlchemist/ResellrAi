@@ -146,7 +146,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       case 'EBAY_LOCATION_REQUIRED':
         return { message: 'Shipping location required', action: 'Enter your shipping location to continue', showModal: true };
       case 'PUBLISH_NOT_ALLOWED':
-        return { message: 'Publishing requires Premium', action: 'Upgrade to Premium to publish directly to eBay' };
+        return { message: 'Publishing requires Premium', action: 'Upgrade to Premium to publish directly to eBay and get price comparables' };
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
         return { message: 'eBay connection expired', action: 'Go to Home screen to reconnect your eBay account' };
@@ -194,7 +194,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
   const handlePublishToEbay = async () => {
     if (!canPublish) {
-      Alert.alert('Premium Required', 'Publishing to eBay requires Premium. You can still copy your listing details.');
+      Alert.alert('Premium Required', 'Publishing to eBay requires Premium. Premium also unlocks price comparables. You can still copy your listing details.');
       return;
     }
 
@@ -471,7 +471,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 {/* Premium Required Warning */}
                 {!usageLoading && !canPublish && (
                   <ErrorBanner
-                    message="Publishing requires Premium. You can still copy your listing details."
+                    message="Publishing requires Premium. Premium also unlocks price comparables. You can still copy your listing details."
                     type="warning"
                   />
                 )}

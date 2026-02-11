@@ -11,6 +11,7 @@ interface UpgradeCardProps {
 const BENEFITS = [
   'Unlimited listings',
   'Direct eBay publishing',
+  'Actual price comparables',
   'Faster workflow',
 ];
 

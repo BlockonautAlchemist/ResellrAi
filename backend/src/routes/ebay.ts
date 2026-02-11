@@ -480,6 +480,7 @@ router.delete('/account', requireEbayConfig, async (req: Request, res: Response)
  * - data: Array of comparable items
  *
  * Returns 401 { error: "ebay_not_connected", needs_reauth: true } if no token or refresh fails.
+ * Returns 403 { error: "premium_required" } if user is not a premium subscriber.
  */
 router.get('/comps', async (req: Request, res: Response) => {
   try {
@@ -489,6 +490,15 @@ router.get('/comps', async (req: Request, res: Response) => {
         error: 'ebay_not_connected',
         message: 'User authentication required',
         needs_reauth: true,
+      });
+      return;
+    }
+
+    const isPremium = await isPremiumUser(userId);
+    if (!isPremium) {
+      res.status(403).json({
+        error: 'premium_required',
+        message: 'Price comparables require a Premium subscription',
       });
       return;
     }
