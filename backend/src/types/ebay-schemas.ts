@@ -711,6 +711,13 @@ export const EBAY_REQUIRED_SCOPES = [
 ] as const;
 
 /**
+ * App-level eBay OAuth scopes (client credentials) for read-only metadata.
+ */
+export const EBAY_APP_SCOPES = [
+  'https://api.ebay.com/oauth/api_scope',
+] as const;
+
+/**
  * Comps confidence thresholds
  */
 export const COMPS_CONFIDENCE_THRESHOLDS = {

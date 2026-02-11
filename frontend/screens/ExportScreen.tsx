@@ -16,12 +16,14 @@ import {
   getEbayAccount,
   getEbayPolicies,
   publishToEbay,
+  getUsageStatus,
   type GenerateListingResponse,
   type EbayConnectedAccount,
   type EbayUserPolicies,
   type EbayPolicy,
   type EbayPublishStep,
   type EbayPublishResult,
+  type UsageStatus,
   type SellerLocationProfile,
   type PackageWeight,
   type PackageDimensions,
@@ -65,6 +67,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const [publishSteps, setPublishSteps] = useState<EbayPublishStep[] | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [pendingRetry, setPendingRetry] = useState(false);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
 
   const title = listing.listingDraft.title.value;
   const description = listing.listingDraft.description.value;
@@ -73,6 +77,24 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   useEffect(() => {
     checkEbayConnection();
   }, []);
+
+  useEffect(() => {
+    fetchUsageStatus();
+  }, []);
+
+  const fetchUsageStatus = async () => {
+    try {
+      setUsageLoading(true);
+      const status = await getUsageStatus();
+      setUsageStatus(status);
+    } catch (err) {
+      console.warn('[ExportScreen] Failed to fetch usage status:', err);
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
+  const canPublish = usageStatus?.isPremium === true;
 
   const checkEbayConnection = async () => {
     try {
@@ -123,6 +145,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         return { message: 'Shipping location required', action: 'Set up a shipping location in eBay Seller Hub' };
       case 'EBAY_LOCATION_REQUIRED':
         return { message: 'Shipping location required', action: 'Enter your shipping location to continue', showModal: true };
+      case 'PUBLISH_NOT_ALLOWED':
+        return { message: 'Publishing requires Premium', action: 'Upgrade to Premium to publish directly to eBay' };
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
         return { message: 'eBay connection expired', action: 'Go to Home screen to reconnect your eBay account' };
@@ -169,6 +193,11 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   const handlePublishToEbay = async () => {
+    if (!canPublish) {
+      Alert.alert('Premium Required', 'Publishing to eBay requires Premium. You can still copy your listing details.');
+      return;
+    }
+
     if (!selectedPolicies.fulfillment || !selectedPolicies.payment || !selectedPolicies.return) {
       Alert.alert('Select Policies', 'Please select shipping, payment, and return policies');
       return;
@@ -439,6 +468,14 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                   />
                 )}
 
+                {/* Premium Required Warning */}
+                {!usageLoading && !canPublish && (
+                  <ErrorBanner
+                    message="Publishing requires Premium. You can still copy your listing details."
+                    type="warning"
+                  />
+                )}
+
                 {/* Policy Selection */}
                 <View style={styles.policySection}>
                   <Text style={styles.policySectionTitle}>Shipping & Policies</Text>
@@ -465,7 +502,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 <PrimaryButton
                   title={`Publish to eBay - $${price}`}
                   onPress={handlePublishToEbay}
-                  disabled={!selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0}
+                  disabled={!canPublish || !selectedPolicies.fulfillment || !listing.listingDraft.category.platformCategoryId || missingItemSpecifics.length > 0}
                   variant="ebay"
                 />
               </>

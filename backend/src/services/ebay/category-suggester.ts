@@ -122,9 +122,19 @@ export async function suggestCategoryFromListing(
     }
   }
 
-  // Get access token for Taxonomy API
+  // Get access token for Taxonomy API (user token if connected, else app token)
   const authService = getEbayAuthService();
-  const accessToken = await authService.getAccessToken(userId);
+  let accessToken: string;
+  try {
+    accessToken = await authService.getAccessToken(userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'ebay_not_connected';
+    if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
+      accessToken = await authService.getAppAccessToken();
+    } else {
+      throw err;
+    }
+  }
 
   // Build search queries from available data
   const queries: Array<{ query: string; source: string }> = [];

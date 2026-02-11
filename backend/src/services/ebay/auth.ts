@@ -19,6 +19,7 @@ import { env } from '../../config/env.js';
 import {
   EBAY_API_URLS,
   EBAY_REQUIRED_SCOPES,
+  EBAY_APP_SCOPES,
   TOKEN_REFRESH_WINDOW_MS,
   tokenNeedsRefresh,
   type EbayTokenSet,
@@ -58,6 +59,12 @@ interface StoredEbayAccount {
   connected_at: string;
   last_used_at: string | null;
 }
+
+// =============================================================================
+// APP TOKEN CACHE (CLIENT CREDENTIALS)
+// =============================================================================
+
+let appTokenCache: { accessToken: string; expiresAt: string } | null = null;
 
 // =============================================================================
 // EBAY AUTH SERVICE CLASS
@@ -330,6 +337,49 @@ export class EbayAuthService {
 
     // Decrypt and return current token
     return decryptToken(storedAccount.access_token_encrypted);
+  }
+
+  /**
+   * Get app-level access token (client credentials) for read-only APIs.
+   * Cached in-memory with refresh window handling.
+   */
+  async getAppAccessToken(): Promise<string> {
+    if (appTokenCache && !tokenNeedsRefresh(appTokenCache.expiresAt)) {
+      return appTokenCache.accessToken;
+    }
+
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: EBAY_APP_SCOPES.join(' '),
+    });
+
+    const response = await this.ebayClient.request<{
+      access_token: string;
+      expires_in: number;
+      token_type: string;
+    }>({
+      method: 'POST',
+      path: '/identity/v1/oauth2/token',
+      body: body.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: this.ebayClient.getBasicAuthHeader(),
+      },
+    });
+
+    if (!response.success || !response.data?.access_token) {
+      console.error('[eBay Auth] App token request failed:', response.error);
+      throw new Error(response.error?.error?.message || 'Failed to get eBay app token');
+    }
+
+    const expiresAt = new Date(Date.now() + response.data.expires_in * 1000).toISOString();
+    appTokenCache = {
+      accessToken: response.data.access_token,
+      expiresAt,
+    };
+
+    console.log('[eBay Auth] App token acquired');
+    return appTokenCache.accessToken;
   }
 
   /**

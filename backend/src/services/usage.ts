@@ -2,7 +2,7 @@
  * Usage Limits Service
  *
  * Tracks per-user usage events and enforces free-tier limits.
- * Premium users (eBay-connected) are unlimited.
+ * Premium users are unlimited (tracked in premium_users table).
  */
 
 import { supabase } from './supabase.js';
@@ -29,8 +29,8 @@ export interface UsageCheckResult {
  */
 export async function isPremiumUser(userKey: string): Promise<boolean> {
   const { data, error } = await supabase
-    .from('ebay_accounts')
-    .select('id')
+    .from('premium_users')
+    .select('user_id, status, expires_at')
     .eq('user_id', userKey)
     .eq('status', 'active')
     .limit(1);
@@ -40,7 +40,17 @@ export async function isPremiumUser(userKey: string): Promise<boolean> {
     return false;
   }
 
-  return (data?.length ?? 0) > 0;
+  const record = data?.[0];
+  if (!record) return false;
+
+  if (record.expires_at) {
+    const expiresAt = new Date(record.expires_at).getTime();
+    if (Number.isFinite(expiresAt) && expiresAt < Date.now()) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**

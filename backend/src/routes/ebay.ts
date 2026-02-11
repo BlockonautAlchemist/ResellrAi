@@ -34,6 +34,7 @@ import { suggestItemSpecifics } from '../services/ebay/aspects-suggester.js';
 import { suggestCategoryFromListing } from '../services/ebay/category-suggester.js';
 import { autoFillRequiredItemSpecifics } from '../services/ebay/ai-autofill.js';
 import { getListing } from '../services/listings-db.js';
+import { isPremiumUser } from '../services/usage.js';
 import {
   EbayConnectedAccountSchema,
   EbayCompsQuerySchema,
@@ -611,7 +612,7 @@ router.get('/categories/suggest', async (req: Request, res: Response) => {
 
     const marketplace = (req.query.marketplace as string) || 'EBAY_US';
 
-    // Resolve user's access token (lookup, decrypt, refresh if expired)
+    // Resolve access token (user token if connected, else app token)
     const authService = getEbayAuthService();
     let accessToken: string;
     try {
@@ -619,14 +620,10 @@ router.get('/categories/suggest', async (req: Request, res: Response) => {
     } catch (tokenError) {
       const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
       if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
-        res.status(401).json({
-          error: 'ebay_not_connected',
-          message: 'Please connect your eBay account to get category suggestions',
-          needs_reauth: true,
-        });
-        return;
+        accessToken = await authService.getAppAccessToken();
+      } else {
+        throw tokenError;
       }
-      throw tokenError;
     }
 
     const taxonomyService = getEbayTaxonomyService();
@@ -698,7 +695,7 @@ router.get('/categories/:categoryId/conditions', async (req: Request, res: Respo
       return;
     }
 
-    // Resolve user's access token
+    // Resolve access token (user token if connected, else app token)
     const authService = getEbayAuthService();
     let accessToken: string;
     try {
@@ -706,14 +703,10 @@ router.get('/categories/:categoryId/conditions', async (req: Request, res: Respo
     } catch (tokenError) {
       const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
       if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
-        res.status(401).json({
-          error: 'ebay_not_connected',
-          message: 'Please connect your eBay account to get category conditions',
-          needs_reauth: true,
-        });
-        return;
+        accessToken = await authService.getAppAccessToken();
+      } else {
+        throw tokenError;
       }
-      throw tokenError;
     }
 
     // Fetch conditions from Metadata API
@@ -782,7 +775,7 @@ router.get('/category/:categoryId/item_specifics', async (req: Request, res: Res
 
     console.log(`[eBay Routes] Fetching item specifics for category ${categoryId}`);
 
-    // Resolve user's access token
+    // Resolve access token (user token if connected, else app token)
     const authService = getEbayAuthService();
     let accessToken: string;
     try {
@@ -790,14 +783,10 @@ router.get('/category/:categoryId/item_specifics', async (req: Request, res: Res
     } catch (tokenError) {
       const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
       if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
-        res.status(401).json({
-          error: 'ebay_not_connected',
-          message: 'Please connect your eBay account to get item specifics',
-          needs_reauth: true,
-        });
-        return;
+        accessToken = await authService.getAppAccessToken();
+      } else {
+        throw tokenError;
       }
-      throw tokenError;
     }
 
     // Fetch aspects from Taxonomy API
@@ -885,7 +874,7 @@ router.post('/category/:categoryId/suggest_item_specifics', async (req: Request,
     console.log(`[eBay Routes] Suggesting item specifics for category ${categoryId}`);
     console.log(`[eBay Routes] AI attributes: ${aiAttributes.map(a => `${a.key}=${a.value}`).join(', ')}`);
 
-    // Resolve user's access token
+    // Resolve access token (user token if connected, else app token)
     const authService = getEbayAuthService();
     let accessToken: string;
     try {
@@ -893,14 +882,10 @@ router.post('/category/:categoryId/suggest_item_specifics', async (req: Request,
     } catch (tokenError) {
       const message = tokenError instanceof Error ? tokenError.message : 'ebay_not_connected';
       if (message === 'No connected eBay account' || message === 'ebay_not_connected') {
-        res.status(401).json({
-          error: 'ebay_not_connected',
-          message: 'Please connect your eBay account',
-          needs_reauth: true,
-        });
-        return;
+        accessToken = await authService.getAppAccessToken();
+      } else {
+        throw tokenError;
       }
-      throw tokenError;
     }
 
     // First, fetch aspects metadata for the category
@@ -1533,6 +1518,18 @@ router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res
         error: {
           code: 'AUTH_REQUIRED',
           message: 'User authentication required',
+        },
+        traceId,
+      });
+      return;
+    }
+
+    const isPremium = await isPremiumUser(userId);
+    if (!isPremium) {
+      res.status(403).json({
+        error: {
+          code: 'PUBLISH_NOT_ALLOWED',
+          message: 'Publishing requires Premium',
         },
         traceId,
       });

@@ -30,7 +30,7 @@ export default function UpgradeCard({ onUpgrade, loading }: UpgradeCardProps) {
         ))}
       </View>
       <PrimaryButton
-        title="Upgrade & Connect eBay"
+        title="View Premium"
         onPress={onUpgrade}
         loading={loading}
         variant="primary"

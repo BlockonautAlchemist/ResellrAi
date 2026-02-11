@@ -44,13 +44,13 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   // Derived state for conditional rendering
   const isFree = usageStatus ? !usageStatus.isPremium : true;
   const isEbayConnected = !!ebayConnection?.connected;
-  const isPremium = isEbayConnected || (usageStatus?.isPremium ?? false);
-  const isLimitReached = isFree && !isEbayConnected && (
+  const isPremium = usageStatus?.isPremium ?? false;
+  const isLimitReached = isFree && (
     (usageStatus?.dailyUsed ?? 0) >= (usageStatus?.dailyLimit ?? Infinity) ||
     (usageStatus?.monthlyUsed ?? 0) >= (usageStatus?.monthlyLimit ?? Infinity)
   );
   const shouldShowUpgradeCard = isLimitReached && !isPremium;
-  const shouldShowPremiumTeaser = isFree && !isEbayConnected && !isLimitReached;
+  const shouldShowPremiumTeaser = isFree && !isLimitReached;
   const isFreeNotConnected = isFree && !isEbayConnected;
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
@@ -370,7 +370,9 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                   <View style={styles.featureNumberCircle}>
                     <Text style={styles.featureNumber}>3</Text>
                   </View>
-                  <Text style={styles.connectedFeatureText}>Publish directly to eBay</Text>
+                  <Text style={styles.connectedFeatureText}>
+                    {isPremium ? 'Publish directly to eBay' : 'Copy listing details and publish manually'}
+                  </Text>
                 </View>
               </Card>
             </>

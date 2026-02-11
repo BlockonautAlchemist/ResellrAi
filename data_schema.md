@@ -628,3 +628,18 @@ When schemas change:
 2. Document breaking changes
 3. Update `progress.md` with migration notes
 4. Update `constitution.md` if invariants change
+
+---
+
+## Database Addendum: premium_users
+
+Source of truth for premium entitlement and publish permissions.
+
+```sql
+CREATE TABLE premium_users (
+  user_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'active',
+  expires_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```

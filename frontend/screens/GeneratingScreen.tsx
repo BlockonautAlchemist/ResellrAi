@@ -102,11 +102,11 @@ export default function GeneratingScreen({ navigation, route }: GeneratingScreen
               : `You've used ${Math.min(limitError.monthlyUsed, limitError.monthlyLimit)}/${limitError.monthlyLimit} listings this month.`}
           </Text>
           <Text style={styles.limitSubtext}>
-            Connect your eBay account for unlimited listings.
+            Upgrade to Premium for unlimited listings.
           </Text>
           <View style={styles.limitButtons}>
             <PrimaryButton
-              title="Connect eBay for Unlimited"
+              title="View Premium"
               onPress={() => navigation.navigate('Home')}
               variant="ebay"
             />
