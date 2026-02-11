@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+﻿import React, { useEffect, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Linking, Alert } from 'react-native';
 import { NavigationContainer, NavigationContainerRef, getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import HomeScreen from './screens/HomeScreen';
+import AccountScreen from './screens/AccountScreen';
 import CameraScreen from './screens/CameraScreen';
 import GeneratingScreen from './screens/GeneratingScreen';
 import ListingPreviewScreen from './screens/ListingPreviewScreen';
@@ -139,6 +140,11 @@ export default function App() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
+          name="Account"
+          component={AccountScreen}
+          options={{ title: 'Account' }}
+        />
+        <Stack.Screen
           name="Camera"
           component={CameraScreen}
           options={{ title: 'New Listing' }}
@@ -171,3 +177,6 @@ export default function App() {
     </NavigationContainer>
   );
 }
+
+
+

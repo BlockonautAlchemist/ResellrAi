@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+﻿import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -93,7 +93,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   // This handles the case where user returns from browser after OAuth
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log(`[HomeScreen] AppState: ${appState.current} → ${nextAppState}`);
+      console.log(`[HomeScreen] AppState: ${appState.current} â†’ ${nextAppState}`);
 
       // App came to foreground
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
@@ -249,6 +249,14 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
           <View style={styles.header}>
             <Text style={styles.title}>ResellrAI</Text>
             <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
+            <TouchableOpacity
+              style={styles.accountButton}
+              onPress={() => navigation.navigate('Account')}
+              accessibilityRole="button"
+              accessibilityLabel="Account"
+            >
+              <Feather name="user" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
 
           {isFreeNotConnected ? (
@@ -407,6 +415,19 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing.md,
+    position: 'relative',
+  },
+  accountButton: {
+    position: 'absolute',
+    right: 0,
+    top: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.sm,
   },
   title: {
     fontSize: typography.sizes.hero,
@@ -513,3 +534,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+
+

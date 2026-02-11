@@ -49,7 +49,7 @@ interface ExportScreenProps {
 
 export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const { listing, price, itemSpecifics = {}, missingItemSpecifics = [], packageWeight, packageDimensions } = route.params;
-  const [copied, setCopied] = useState<'title' | 'description' | 'all' | null>(null);
+  const [copied, setCopied] = useState<'title' | 'description' | 'details' | 'all' | null>(null);
   const [exported, setExported] = useState(false);
 
   // eBay state
@@ -303,14 +303,55 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     }
   };
 
-  const copyToClipboard = async (text: string, type: 'title' | 'description' | 'all') => {
+  const copyToClipboard = async (text: string, type: 'title' | 'description' | 'details' | 'all') => {
     await Clipboard.setStringAsync(text);
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const buildItemDetailsText = () => {
+    const categoryValue = listing.listingDraft.category.value;
+    const conditionValue = listing.listingDraft.condition?.value;
+    const categoryText = categoryValue ? `Category: ${categoryValue}` : '';
+    const conditionText = conditionValue ? `Condition: ${conditionValue}` : '';
+    const mergedDetails = new Map<string, string>();
+
+    for (const attr of listing.listingDraft.attributes) {
+      const key = attr.key?.trim();
+      const value = attr.value?.trim();
+      if (key && value) {
+        mergedDetails.set(key.toLowerCase(), `${attr.key}: ${attr.value}`);
+      }
+    }
+
+    for (const [key, value] of Object.entries(itemSpecifics)) {
+      const cleanKey = key?.trim();
+      const cleanValue = value?.trim();
+      if (cleanKey && cleanValue) {
+        mergedDetails.set(cleanKey.toLowerCase(), `${cleanKey}: ${cleanValue}`);
+      }
+    }
+
+    return [
+      categoryText,
+      conditionText,
+      ...Array.from(mergedDetails.values()),
+    ]
+      .filter(Boolean)
+      .join('\n');
+  };
+
   const copyAll = async () => {
-    const fullText = `${title}\n\n${description}\n\nPrice: $${price}`;
+    const itemDetailsText = buildItemDetailsText();
+
+    const fullText = [
+      title,
+      description,
+      itemDetailsText ? `Item Details:\n${itemDetailsText}` : null,
+      `Price: $${price}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     await copyToClipboard(fullText, 'all');
   };
 
@@ -396,7 +437,17 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
         {/* Attributes */}
         <Card>
-          <Text style={styles.sectionTitle}>Item Details</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Item Details</Text>
+            <TouchableOpacity
+              style={[styles.copyButton, copied === 'details' && styles.copyButtonSuccess]}
+              onPress={() => copyToClipboard(buildItemDetailsText(), 'details')}
+            >
+              <Text style={[styles.copyButtonText, copied === 'details' && styles.copyButtonTextSuccess]}>
+                {copied === 'details' ? 'Copied!' : 'Copy'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           {listing.listingDraft.attributes.map((attr, index) => (
             <View key={index} style={styles.attributeRow}>
               <Text style={styles.attributeKey}>{attr.key}:</Text>
@@ -523,7 +574,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           <Text style={styles.instructionsText}>
             1. Open eBay app{'\n'}
             2. Start a new listing{'\n'}
-            3. Paste the title and description{'\n'}
+            3. Paste the title, description, and item details{'\n'}
             4. Upload your photos{'\n'}
             5. Set price to ${price}{'\n'}
             6. Publish your listing!

@@ -47,6 +47,51 @@ const DEFAULT_CONDITION_OPTIONS: CategoryCondition[] = [
   { id: '7000', label: 'For Parts / Not Working', apiEnum: 'FOR_PARTS_OR_NOT_WORKING' },
 ];
 
+const PREFERRED_CONDITION_ORDER = [
+  'USED_GOOD',
+  'USED_VERY_GOOD',
+  'USED_EXCELLENT',
+  'USED_ACCEPTABLE',
+  'LIKE_NEW',
+  'USED',
+  'PRE_OWNED',
+  'REFURBISHED',
+  'SELLER_REFURBISHED',
+  'CERTIFIED_REFURBISHED',
+  'FOR_PARTS_OR_NOT_WORKING',
+];
+
+const NEW_CONDITION_VALUES = new Set(['NEW', 'NEW_OTHER', 'NEW_WITH_DEFECTS', 'NEW_WITH_TAGS', 'NEW_WITHOUT_TAGS']);
+
+const getPreferredConditionValue = (
+  options: CategoryCondition[],
+  currentValue?: string
+) => {
+  const normalizedOptions = options.map((option) => ({
+    ...option,
+    apiEnum: option.apiEnum?.toUpperCase?.() ?? option.apiEnum,
+    label: option.label?.toLowerCase?.() ?? option.label,
+  }));
+
+  if (currentValue && !NEW_CONDITION_VALUES.has(currentValue)) {
+    return currentValue;
+  }
+
+  for (const preferred of PREFERRED_CONDITION_ORDER) {
+    const match = normalizedOptions.find((option) => option.apiEnum === preferred);
+    if (match) {
+      return match.apiEnum;
+    }
+  }
+
+  const firstNonNew = normalizedOptions.find(
+    (option) => option.apiEnum && !NEW_CONDITION_VALUES.has(option.apiEnum)
+  );
+  if (firstNonNew?.apiEnum) return firstNonNew.apiEnum;
+
+  return normalizedOptions[0]?.apiEnum || currentValue || 'USED_GOOD';
+};
+
 interface PreviewScreenProps {
   navigation: any;
   route: {
@@ -79,8 +124,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         }
       : undefined
   );
-  const [selectedCondition, setSelectedCondition] = useState(
-    initialListing.listingDraft.condition?.value || 'USED_GOOD'
+  const [selectedCondition, setSelectedCondition] = useState(() =>
+    getPreferredConditionValue(
+      DEFAULT_CONDITION_OPTIONS,
+      initialListing.listingDraft.condition?.value
+    )
   );
   const [showConditionPicker, setShowConditionPicker] = useState(false);
   const [isUpdatingCondition, setIsUpdatingCondition] = useState(false);
@@ -103,8 +151,8 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
   // Category change handler: reset dependent state when category changes
   const handleCategoryChange = (category: { categoryId: string; categoryName: string; categoryTreeId: string }) => {
     setSelectedCategory(category);
-    // Reset condition to default — will be re-fetched by the conditions useEffect
-    setSelectedCondition('USED_GOOD');
+    // Reset condition to preferred default — will be re-fetched by the conditions useEffect
+    setSelectedCondition(getPreferredConditionValue(DEFAULT_CONDITION_OPTIONS));
     setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
     // Reset item specifics — will be re-fetched by the aspects useEffect
     setItemSpecifics({});
@@ -249,9 +297,16 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             (c) => c.apiEnum === selectedCondition || c.id === selectedCondition
           );
 
-          if (!currentConditionValid && result.conditions.length > 0) {
-            // Auto-select first valid condition
-            const newCondition = result.conditions[0].apiEnum;
+          const preferredCondition = getPreferredConditionValue(
+            result.conditions,
+            selectedCondition
+          );
+          const shouldOverrideToPreferred =
+            !!preferredCondition &&
+            (NEW_CONDITION_VALUES.has(selectedCondition) || !currentConditionValid);
+
+          if (shouldOverrideToPreferred) {
+            const newCondition = preferredCondition;
             setSelectedCondition(newCondition);
             // Persist the change
             if (itemId) {
