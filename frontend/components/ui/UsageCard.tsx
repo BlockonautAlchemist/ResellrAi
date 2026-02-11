@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Card from './Card';
-import { colors, spacing, typography, radii, tier } from '../../lib/theme';
+import { colors, spacing, typography, radii, shadows } from '../../lib/theme';
 
 interface UsageCardProps {
   dailyUsed: number;
@@ -47,20 +46,17 @@ export default function UsageCard({
   const monthlyColor = loading ? colors.surfaceSecondary : getBarColor(monthlyUsed, monthlyLimit);
 
   return (
-    <Card elevated>
-      {/* Free Plan pill */}
-      <View style={styles.pillRow}>
-        <View style={[styles.pill, { backgroundColor: tier.free.color }]}>
-          <Text style={styles.pillText}>{tier.free.label} Plan</Text>
-        </View>
-      </View>
+    <View style={styles.card}>
+      <Text style={styles.title}>Usage Tracking</Text>
 
       {/* Daily bar */}
       <View style={styles.barSection}>
         <View style={styles.barHeader}>
-          <Text style={styles.barLabel}>Today</Text>
-          <Text style={[styles.barCount, { color: dailyColor }]}>
-            {loading ? '—' : `${Math.min(dailyUsed, dailyLimit)} / ${dailyLimit}`}
+          <Text style={styles.barLabel}>
+            {loading ? 'Today: —' : `Today: ${Math.min(dailyUsed, dailyLimit)}/${dailyLimit}`}
+          </Text>
+          <Text style={[styles.barPct, { color: dailyColor }]}>
+            {loading ? '—' : `${Math.round(dailyPct * 100)}%`}
           </Text>
         </View>
         <View style={styles.barTrack}>
@@ -76,9 +72,11 @@ export default function UsageCard({
       {/* Monthly bar */}
       <View style={styles.barSection}>
         <View style={styles.barHeader}>
-          <Text style={styles.barLabel}>This Month</Text>
-          <Text style={[styles.barCount, { color: monthlyColor }]}>
-            {loading ? '—' : `${Math.min(monthlyUsed, monthlyLimit)} / ${monthlyLimit}`}
+          <Text style={styles.barLabel}>
+            {loading ? 'This Month: —' : `This Month: ${Math.min(monthlyUsed, monthlyLimit)}/${monthlyLimit}`}
+          </Text>
+          <Text style={[styles.barPct, { color: monthlyColor }]}>
+            {loading ? '—' : `${Math.round(monthlyPct * 100)}%`}
           </Text>
         </View>
         <View style={styles.barTrack}>
@@ -97,24 +95,22 @@ export default function UsageCard({
           ? 'Loading usage...'
           : getEncouragingCopy(dailyUsed, dailyLimit, monthlyUsed, monthlyLimit)}
       </Text>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pillRow: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.lg,
+    ...shadows.md,
   },
-  pill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.full,
-  },
-  pillText: {
-    color: '#fff',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
+  title: {
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.md,
   },
   barSection: {
     marginBottom: spacing.md,
@@ -130,7 +126,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: typography.weights.medium,
   },
-  barCount: {
+  barPct: {
     fontSize: typography.sizes.body,
     fontWeight: typography.weights.semibold,
   },

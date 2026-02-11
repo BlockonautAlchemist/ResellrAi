@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { colors, spacing, typography, radii } from '../../lib/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, typography, radii, shadows } from '../../lib/theme';
 
 interface PremiumTeaserProps {
   onPress: () => void;
@@ -20,7 +21,7 @@ export default function PremiumTeaser({ onPress, loading }: PremiumTeaserProps) 
       <View style={styles.benefits}>
         {BENEFITS.map((benefit) => (
           <View key={benefit} style={styles.benefitRow}>
-            <Text style={styles.bullet}>•</Text>
+            <Ionicons name="checkmark-circle" size={20} color={colors.success} style={styles.checkIcon} />
             <Text style={styles.benefitText}>{benefit}</Text>
           </View>
         ))}
@@ -32,7 +33,7 @@ export default function PremiumTeaser({ onPress, loading }: PremiumTeaserProps) 
         activeOpacity={0.7}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={colors.primary} />
+          <ActivityIndicator size="small" color="#fff" />
         ) : (
           <Text style={styles.buttonText}>View Premium</Text>
         )}
@@ -43,17 +44,17 @@ export default function PremiumTeaser({ onPress, loading }: PremiumTeaserProps) 
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surfaceTertiary,
-    borderRadius: radii.lg,
+    backgroundColor: colors.premiumCardBg,
+    borderRadius: 14,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
+    borderColor: '#F0E6C8',
+    ...shadows.md,
   },
   title: {
-    fontSize: typography.sizes.body,
-    fontWeight: typography.weights.medium,
-    color: colors.textSecondary,
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
     marginBottom: spacing.sm,
   },
   benefits: {
@@ -62,28 +63,25 @@ const styles = StyleSheet.create({
   benefitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.xs + 2,
   },
-  bullet: {
-    fontSize: typography.sizes.body,
-    color: colors.textMuted,
+  checkIcon: {
     marginRight: spacing.sm,
   },
   benefitText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textTertiary,
+    fontSize: typography.sizes.body,
+    color: colors.textSecondary,
   },
   button: {
     alignSelf: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: radii.full,
+    backgroundColor: colors.premiumAccent,
   },
   buttonText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    color: colors.primary,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+    color: '#fff',
   },
 });

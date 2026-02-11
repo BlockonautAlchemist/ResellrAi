@@ -32,6 +32,15 @@ export const colors = {
 
   overlay: 'rgba(0, 0, 0, 0.5)',
   whiteAlpha80: 'rgba(255,255,255,0.8)',
+
+  // Gradient
+  gradientTop: '#E8F0FE',
+  gradientBottom: '#F8F9FB',
+
+  // Premium card
+  premiumCardBg: '#FFF8E1',
+  premiumAccent: '#F5A623',
+  premiumAccentLight: '#FFF0D4',
 } as const;
 
 export const spacing = {

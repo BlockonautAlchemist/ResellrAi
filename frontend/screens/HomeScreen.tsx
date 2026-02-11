@@ -10,11 +10,14 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, getUsageStatus, type EbayConnectionStatus, type UsageStatus } from '../lib/api';
 import { isApiConfigured } from '../lib/supabase';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
-import { ScreenContainer, PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser } from '../components/ui';
+import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser } from '../components/ui';
 
 interface HomeScreenProps {
   navigation: any;
@@ -225,153 +228,171 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   return (
-    <ScreenContainer edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.title}>ResellrAI</Text>
-          <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
-        </View>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <LinearGradient
+        colors={[colors.gradientTop, colors.gradientBottom]}
+        style={styles.gradient}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>ResellrAI</Text>
+            <Text style={styles.subtitle}>AI-Powered Listing Generator</Text>
+          </View>
 
-        {isFreeNotConnected ? (
-          <>
-            {/* 1. New Listing Button */}
-            <View style={styles.buttonContainerTop}>
-              <PrimaryButton
-                title="New Listing"
+          {isFreeNotConnected ? (
+            <>
+              {/* 1. New Listing Button */}
+              <TouchableOpacity
+                style={[
+                  styles.newListingButton,
+                  (!apiConnected || shouldShowUpgradeCard) && styles.newListingButtonDisabled,
+                ]}
                 onPress={() => navigation.navigate('Camera')}
                 disabled={!apiConnected || shouldShowUpgradeCard}
-                size="lg"
-              />
-            </View>
+                activeOpacity={0.8}
+              >
+                <Text style={styles.newListingButtonText}>New Listing</Text>
+              </TouchableOpacity>
 
-            {/* 2. Workflow Card */}
-            <Card elevated style={{ marginBottom: spacing.sm }}>
-              <Text style={styles.featureTitle}>Free Plan Workflow</Text>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>1</Text>
+              {/* 2. Workflow Card */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Free Plan Workflow</Text>
+                <View style={styles.featureRow}>
+                  <View style={styles.iconContainer}>
+                    <Feather name="camera" size={18} color={colors.textSecondary} />
+                  </View>
+                  <Text style={styles.featureText}>Take photos of your item.</Text>
                 </View>
-                <Text style={styles.featureText}>Take photos of your item</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>2</Text>
+                <View style={styles.featureRow}>
+                  <View style={styles.iconContainer}>
+                    <Feather name="file-text" size={18} color={colors.textSecondary} />
+                  </View>
+                  <Text style={[styles.featureText, { flex: 1 }]}>
+                    AI generates price, title, description, weight, dimensions, and category.{'\n'}Then copy to clipboard.
+                  </Text>
+                  <Feather name="copy" size={16} color={colors.textMuted} />
                 </View>
-                <Text style={styles.featureText}>AI generates title, description, and price</Text>
               </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>3</Text>
-                </View>
-                <Text style={styles.featureText}>Copy to clipboard</Text>
-              </View>
-            </Card>
 
-            {/* 3. Usage Limits Card */}
-            <View style={styles.usageContainer}>
-              {usageStatus ? (
-                <UsageCard
-                  dailyUsed={usageStatus.dailyUsed}
-                  dailyLimit={usageStatus.dailyLimit}
-                  monthlyUsed={usageStatus.monthlyUsed}
-                  monthlyLimit={usageStatus.monthlyLimit}
-                  loading={usageLoading}
-                />
+              {/* 3. Usage Tracking Card */}
+              <View style={styles.cardWrapper}>
+                {usageStatus ? (
+                  <UsageCard
+                    dailyUsed={usageStatus.dailyUsed}
+                    dailyLimit={usageStatus.dailyLimit}
+                    monthlyUsed={usageStatus.monthlyUsed}
+                    monthlyLimit={usageStatus.monthlyLimit}
+                    loading={usageLoading}
+                  />
+                ) : (
+                  <TierBadge isPremium={false} />
+                )}
+              </View>
+
+              {/* 4. Premium Upsell Card */}
+              {shouldShowUpgradeCard && (
+                <View style={styles.cardWrapper}>
+                  <UpgradeCard
+                    onUpgrade={handleConnectEbay}
+                    loading={isConnectingEbay || isRefreshingEbay}
+                  />
+                </View>
+              )}
+              {shouldShowPremiumTeaser && (
+                <View style={styles.cardWrapper}>
+                  <PremiumTeaser
+                    onPress={handleConnectEbay}
+                    loading={isConnectingEbay || isRefreshingEbay}
+                  />
+                </View>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Connected/Premium layout */}
+              {isPremium ? (
+                <TierBadge isPremium />
+              ) : isFree && usageStatus ? (
+                <View style={styles.cardWrapper}>
+                  <UsageCard
+                    dailyUsed={usageStatus.dailyUsed}
+                    dailyLimit={usageStatus.dailyLimit}
+                    monthlyUsed={usageStatus.monthlyUsed}
+                    monthlyLimit={usageStatus.monthlyLimit}
+                    loading={usageLoading}
+                  />
+                </View>
               ) : (
                 <TierBadge isPremium={false} />
               )}
-            </View>
 
-            {/* 4. Premium Upsell Card */}
-            {shouldShowUpgradeCard && (
-              <View style={styles.upgradeContainer}>
-                <UpgradeCard
-                  onUpgrade={handleConnectEbay}
-                  loading={isConnectingEbay || isRefreshingEbay}
-                />
-              </View>
-            )}
-            {shouldShowPremiumTeaser && (
-              <View style={styles.upgradeContainer}>
-                <PremiumTeaser
-                  onPress={handleConnectEbay}
-                  loading={isConnectingEbay || isRefreshingEbay}
-                />
-              </View>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Connected/Premium layout (unchanged) */}
-            {isPremium ? (
-              <TierBadge isPremium />
-            ) : isFree && usageStatus ? (
-              <UsageCard
-                dailyUsed={usageStatus.dailyUsed}
-                dailyLimit={usageStatus.dailyLimit}
-                monthlyUsed={usageStatus.monthlyUsed}
-                monthlyLimit={usageStatus.monthlyLimit}
-                loading={usageLoading}
-              />
-            ) : (
-              <TierBadge isPremium={false} />
-            )}
-
-            <View style={styles.buttonContainer}>
-              <PrimaryButton
-                title="New Listing"
-                onPress={() => navigation.navigate('Camera')}
-                disabled={!apiConnected || shouldShowUpgradeCard}
-                size="lg"
-              />
-            </View>
-
-            {ebayAvailable && isEbayConnected && (
-              <View style={styles.ebayButtonContainer}>
+              <View style={styles.connectedButtonContainer}>
                 <PrimaryButton
-                  title="eBay Connected"
-                  subtitle={ebayConnection?.ebay_username || 'Tap to manage'}
-                  onPress={handleConnectEbay}
-                  disabled={isConnectingEbay || isRefreshingEbay}
-                  loading={isConnectingEbay || isRefreshingEbay}
-                  variant="success"
+                  title="New Listing"
+                  onPress={() => navigation.navigate('Camera')}
+                  disabled={!apiConnected || shouldShowUpgradeCard}
+                  size="lg"
                 />
               </View>
-            )}
 
-            <Card elevated>
-              <Text style={styles.featureTitle}>How it works:</Text>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>1</Text>
+              {ebayAvailable && isEbayConnected && (
+                <View style={styles.ebayButtonContainer}>
+                  <PrimaryButton
+                    title="eBay Connected"
+                    subtitle={ebayConnection?.ebay_username || 'Tap to manage'}
+                    onPress={handleConnectEbay}
+                    disabled={isConnectingEbay || isRefreshingEbay}
+                    loading={isConnectingEbay || isRefreshingEbay}
+                    variant="success"
+                  />
                 </View>
-                <Text style={styles.featureText}>Take photos of your item</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>2</Text>
-                </View>
-                <Text style={styles.featureText}>AI generates title, description, and price</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureNumberCircle}>
-                  <Text style={styles.featureNumber}>3</Text>
-                </View>
-                <Text style={styles.featureText}>Publish directly to eBay</Text>
-              </View>
-            </Card>
-          </>
-        )}
+              )}
 
-      </ScrollView>
-    </ScreenContainer>
+              <Card elevated>
+                <Text style={styles.cardTitle}>How it works:</Text>
+                <View style={styles.featureItem}>
+                  <View style={styles.featureNumberCircle}>
+                    <Text style={styles.featureNumber}>1</Text>
+                  </View>
+                  <Text style={styles.connectedFeatureText}>Take photos of your item</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <View style={styles.featureNumberCircle}>
+                    <Text style={styles.featureNumber}>2</Text>
+                  </View>
+                  <Text style={styles.connectedFeatureText}>AI generates price, title, description, weight, dimensions, and category.</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <View style={styles.featureNumberCircle}>
+                    <Text style={styles.featureNumber}>3</Text>
+                  </View>
+                  <Text style={styles.connectedFeatureText}>Publish directly to eBay</Text>
+                </View>
+              </Card>
+            </>
+          )}
+        </ScrollView>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.gradientTop,
+  },
+  gradient: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.lg,
   },
   header: {
     alignItems: 'center',
@@ -387,22 +408,75 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: spacing.xs,
   },
-  buttonContainer: {
+
+  // Free-tier New Listing button
+  newListingButton: {
+    backgroundColor: colors.primary,
+    height: 54,
+    borderRadius: radii.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    ...shadows.md,
+  },
+  newListingButtonDisabled: {
+    opacity: 0.5,
+  },
+  newListingButtonText: {
+    color: '#fff',
+    fontSize: typography.sizes.button,
+    fontWeight: typography.weights.semibold,
+  },
+
+  // Free-tier workflow card
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.lg,
+    marginBottom: 14,
+    ...shadows.md,
+  },
+  cardTitle: {
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: spacing.lg,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  featureText: {
+    fontSize: typography.sizes.body,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+
+  // Wrapper for UsageCard / PremiumTeaser (standalone cards that style themselves)
+  cardWrapper: {
+    marginBottom: 14,
+  },
+
+  // Connected/Premium layout styles
+  connectedButtonContainer: {
     marginTop: spacing.xxxl,
     marginBottom: spacing.xxxl + spacing.sm,
-  },
-  buttonContainerTop: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   ebayButtonContainer: {
     marginBottom: spacing.xl,
-  },
-  featureTitle: {
-    fontSize: typography.sizes.title,
-    fontWeight: typography.weights.semibold,
-    color: colors.text,
-    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   featureItem: {
     flexDirection: 'row',
@@ -423,16 +497,9 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.body,
     fontWeight: typography.weights.semibold,
   },
-  featureText: {
+  connectedFeatureText: {
     fontSize: typography.sizes.input,
     color: colors.textSecondary,
     flex: 1,
-  },
-  usageContainer: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  upgradeContainer: {
-    marginBottom: 0,
   },
 });
