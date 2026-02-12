@@ -18,7 +18,6 @@ import {
   startEbayOAuth,
   disconnectEbay,
   getUsageStatus,
-  createCheckoutSession,
   createBillingPortal,
   type EbayConnectionStatus,
   type UsageStatus,
@@ -26,6 +25,7 @@ import {
 import { isApiConfigured, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colors, spacing, typography } from '../lib/theme';
 import { Card, PrimaryButton, TierBadge, UsageCard, ErrorBanner, StatusChip } from '../components/ui';
+import { setOAuthReturnRoute } from '../lib/oauth';
 
 interface AccountScreenProps {
   navigation: any;
@@ -172,6 +172,7 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
 
     try {
       setIsConnectingEbay(true);
+      setOAuthReturnRoute('Account');
       const { auth_url } = await startEbayOAuth();
 
       const isValidEbayAuthUrl =
@@ -187,6 +188,7 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
     } catch (err) {
       pendingOAuthRef.current = false;
       setIsConnectingEbay(false);
+      setOAuthReturnRoute(null);
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start eBay connection');
     }
   };
@@ -241,19 +243,8 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
             loading={usageLoading}
           />
           <PrimaryButton
-            title="Upgrade to Premium"
-            onPress={async () => {
-              try {
-                if (!isAuthed) {
-                  navigation.navigate('Auth');
-                  return;
-                }
-                const { checkoutUrl } = await createCheckoutSession();
-                await WebBrowser.openBrowserAsync(checkoutUrl);
-              } catch (err) {
-                Alert.alert('Upgrade', err instanceof Error ? err.message : 'Failed to start checkout');
-              }
-            }}
+            title="View Premium"
+            onPress={() => navigation.navigate('Premium')}
             variant="primary"
             size="sm"
           />
@@ -339,6 +330,7 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
                   onPress={async () => {
                     try {
                       await supabase.auth.signOut();
+                      navigation.reset({ index: 0, routes: [{ name: 'OnboardingAuth' }] });
                     } catch (err) {
                       Alert.alert('Sign Out', err instanceof Error ? err.message : 'Failed to sign out');
                     }

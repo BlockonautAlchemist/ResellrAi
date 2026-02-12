@@ -8,6 +8,7 @@ import ebayRouter from './routes/ebay.js';
 import billingRouter from './routes/billing.js';
 import { getUserKey } from './middleware/usage-limit.js';
 import { checkUsage } from './services/usage.js';
+import { getTrialStatus } from './services/publish-trial.js';
 import { attachAuthUser } from './middleware/auth.js';
 
 const app = express();
@@ -42,7 +43,11 @@ app.get('/api/v1/usage/status', async (req, res) => {
   }
   try {
     const usage = await checkUsage(userKey, 'generate');
-    res.json(usage);
+    const publishTrial = await getTrialStatus(userKey);
+    res.json({
+      ...usage,
+      publishTrial,
+    });
   } catch (err) {
     console.error('[UsageStatus] error:', err);
     res.status(500).json({ error: 'Failed to check usage' });

@@ -35,6 +35,12 @@ import { suggestCategoryFromListing } from '../services/ebay/category-suggester.
 import { autoFillRequiredItemSpecifics } from '../services/ebay/ai-autofill.js';
 import { getListing } from '../services/listings-db.js';
 import { isPremiumUser } from '../services/usage.js';
+import {
+  canDirectPublish,
+  consumeOnSuccessfulPublish,
+  grantOnEbayConnect,
+  getTrialStatus,
+} from '../services/publish-trial.js';
 import { requireAuth } from '../middleware/auth.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import {
@@ -322,6 +328,15 @@ router.get('/oauth/callback', requireEbayConfig, async (req: Request, res: Respo
     // Exchange code for tokens
     const authService = getEbayAuthService();
     const result = await authService.handleCallback(String(code), String(state));
+
+    const premium = await isPremiumUser(result.userId);
+    if (!premium) {
+      try {
+        await grantOnEbayConnect(result.userId);
+      } catch (grantError) {
+        console.warn('[eBay Routes] Failed to grant publish trial after OAuth connect:', grantError);
+      }
+    }
 
     console.log(`[eBay Routes] OAuth success for user ${result.userId}`);
 
@@ -1538,12 +1553,12 @@ router.post('/listings/:id/publish', requireEbayConfig, requireAuth, async (req:
       return;
     }
 
-    const isPremium = await isPremiumUser(userId);
-    if (!isPremium) {
+    const publishAccess = await canDirectPublish(userId);
+    if (!publishAccess.allowed) {
       res.status(403).json({
         error: {
           code: 'PUBLISH_NOT_ALLOWED',
-          message: 'Publishing requires Premium',
+          message: 'Your one-time direct publish trial has already been used. Upgrade to Premium for unlimited direct publishing.',
         },
         traceId,
       });
@@ -1616,8 +1631,38 @@ router.post('/listings/:id/publish', requireEbayConfig, requireAuth, async (req:
     // Publish to eBay using the 6-step pipeline
     const result = await listingService.publishFixedPriceListing(userId, draft, policies);
 
+    let entitlement: { usedTrial: boolean; remainingTrialPublishes: number } | undefined;
+    if (result.success) {
+      if (publishAccess.reason === 'trial_available') {
+        try {
+          const consumed = await consumeOnSuccessfulPublish(userId, listingId, result);
+          const trialStatus = consumed ? { available: false } : await getTrialStatus(userId);
+          entitlement = {
+            usedTrial: consumed,
+            remainingTrialPublishes: trialStatus.available ? 1 : 0,
+          };
+        } catch (consumeError) {
+          console.warn('[eBay Routes] Trial consumption failed after successful publish:', consumeError);
+          const trialStatus = await getTrialStatus(userId);
+          entitlement = {
+            usedTrial: false,
+            remainingTrialPublishes: trialStatus.available ? 1 : 0,
+          };
+        }
+      } else if (publishAccess.reason === 'premium') {
+        entitlement = {
+          usedTrial: false,
+          remainingTrialPublishes: 0,
+        };
+      }
+    }
+
+    const resultWithEntitlement = entitlement
+      ? { ...result, entitlement }
+      : result;
+
     // Validate response (traceId is now included in the result)
-    const parseResult = EbayPublishResultSchema.safeParse(result);
+    const parseResult = EbayPublishResultSchema.safeParse(resultWithEntitlement);
 
     if (parseResult.success) {
       const validated = parseResult.data;
@@ -1631,9 +1676,9 @@ router.post('/listings/:id/publish', requireEbayConfig, requireAuth, async (req:
     } else {
       // Schema validation failed — check if underlying publish actually succeeded
       console.warn(`[eBay Routes] Result schema validation failed { traceId: ${traceId} }:`, parseResult.error.errors);
-      if (result && (result as any).success === true) {
+      if (resultWithEntitlement && (resultWithEntitlement as any).success === true) {
         console.warn(`[eBay Routes] Returning raw success result despite schema mismatch { traceId: ${traceId} }`);
-        res.json(result);
+        res.json(resultWithEntitlement);
       } else {
         res.status(400).json({
           error: {

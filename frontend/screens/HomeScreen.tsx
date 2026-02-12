@@ -15,9 +15,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, getUsageStatus, type EbayConnectionStatus, type UsageStatus } from '../lib/api';
-import { isApiConfigured } from '../lib/supabase';
+import { isApiConfigured, supabase } from '../lib/supabase';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
 import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser } from '../components/ui';
+import { setOAuthReturnRoute } from '../lib/oauth';
 
 interface HomeScreenProps {
   navigation: any;
@@ -51,7 +52,6 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   );
   const shouldShowUpgradeCard = isLimitReached && !isPremium;
   const shouldShowPremiumTeaser = isFree && !isLimitReached;
-  const isFreeNotConnected = isFree && !isEbayConnected;
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
 
@@ -119,7 +119,12 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   // Re-check eBay status and usage when screen comes into focus
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        navigation.reset({ index: 0, routes: [{ name: 'OnboardingAuth' }] });
+        return;
+      }
       if (apiConnected) {
         checkEbayStatus();
         fetchUsageStatus();
@@ -187,6 +192,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
 
     try {
       setIsConnectingEbay(true);
+      setOAuthReturnRoute('Home');
       const { auth_url } = await startEbayOAuth();
 
       // Validate the auth_url is an eBay authorization URL (not our backend callback)
@@ -222,17 +228,14 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     } catch (err) {
       pendingOAuthRef.current = false;
       setIsConnectingEbay(false);
+      setOAuthReturnRoute(null);
       console.error('[HomeScreen] eBay OAuth error:', err);
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start eBay connection');
     }
   };
 
   const handleUpgradePress = () => {
-    Alert.alert(
-      'Upgrade to Premium',
-      'Premium unlocks unlimited listings, direct eBay publishing, and price comparables. Contact support to upgrade.',
-      [{ text: 'OK' }]
-    );
+    navigation.navigate('Premium');
   };
 
   return (
@@ -259,7 +262,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
 
-          {isFreeNotConnected ? (
+          {isFree ? (
             <>
               {/* 1. New Listing Button */}
               <TouchableOpacity
@@ -332,19 +335,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               {/* Connected/Premium layout */}
               {isPremium ? (
                 <TierBadge isPremium />
-              ) : isFree && usageStatus ? (
-                <View style={styles.cardWrapper}>
-                  <UsageCard
-                    dailyUsed={usageStatus.dailyUsed}
-                    dailyLimit={usageStatus.dailyLimit}
-                    monthlyUsed={usageStatus.monthlyUsed}
-                    monthlyLimit={usageStatus.monthlyLimit}
-                    loading={usageLoading}
-                  />
-                </View>
-              ) : (
-                <TierBadge isPremium={false} />
-              )}
+              ) : null}
 
               <View style={styles.connectedButtonContainer}>
                 <PrimaryButton
@@ -354,6 +345,26 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                   size="lg"
                 />
               </View>
+
+              {isPremium && !ebayAvailable && (
+                <Card elevated>
+                  <Text style={styles.cardTitle}>eBay Unavailable</Text>
+                  <Text style={styles.cardBody}>Ask support to enable eBay publishing.</Text>
+                </Card>
+              )}
+
+              {isPremium && ebayAvailable && !isEbayConnected && (
+                <View style={styles.ebayButtonContainer}>
+                  <PrimaryButton
+                    title="Connect eBay to Publish"
+                    subtitle="Finish setup to publish in one tap"
+                    onPress={handleConnectEbay}
+                    disabled={isConnectingEbay || isRefreshingEbay}
+                    loading={isConnectingEbay || isRefreshingEbay}
+                    variant="ebay"
+                  />
+                </View>
+              )}
 
               {ebayAvailable && isEbayConnected && (
                 <View style={styles.ebayButtonContainer}>
@@ -387,7 +398,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                     <Text style={styles.featureNumber}>3</Text>
                   </View>
                   <Text style={styles.connectedFeatureText}>
-                    {isPremium ? 'Publish directly to eBay' : 'Copy listing details and publish manually'}
+                    Publish directly to eBay
                   </Text>
                 </View>
               </Card>
@@ -473,6 +484,10 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     color: colors.text,
     marginBottom: spacing.lg,
+  },
+  cardBody: {
+    fontSize: typography.sizes.body,
+    color: colors.textSecondary,
   },
   featureRow: {
     flexDirection: 'row',

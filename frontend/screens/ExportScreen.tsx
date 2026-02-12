@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,18 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as WebBrowser from 'expo-web-browser';
 import {
   exportListing,
   getEbayAccount,
   getEbayPolicies,
   publishToEbay,
   getUsageStatus,
+  startEbayOAuth,
   type GenerateListingResponse,
   type EbayConnectedAccount,
   type EbayUserPolicies,
@@ -32,6 +36,7 @@ import PublishProgress from '../components/PublishProgress';
 import LocationModal from '../components/LocationModal';
 import { colors, spacing, typography, radii } from '../lib/theme';
 import { ScreenContainer, PrimaryButton, Card, StatusChip, ErrorBanner } from '../components/ui';
+import { setOAuthReturnRoute } from '../lib/oauth';
 
 interface ExportScreenProps {
   navigation: any;
@@ -43,6 +48,10 @@ interface ExportScreenProps {
       missingItemSpecifics?: string[];
       packageWeight?: PackageWeight;
       packageDimensions?: PackageDimensions;
+      ebayCallback?: boolean;
+      ebaySuccess?: boolean;
+      ebayError?: string;
+      ebayMessage?: string;
     };
   };
 }
@@ -56,6 +65,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const [ebayAccount, setEbayAccount] = useState<EbayConnectedAccount | null>(null);
   const [ebayPolicies, setEbayPolicies] = useState<EbayUserPolicies | null>(null);
   const [isLoadingEbay, setIsLoadingEbay] = useState(true);
+  const [isConnectingEbay, setIsConnectingEbay] = useState(false);
+  const [isRefreshingEbay, setIsRefreshingEbay] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [selectedPolicies, setSelectedPolicies] = useState<{
@@ -69,6 +80,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const [pendingRetry, setPendingRetry] = useState(false);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const pendingOAuthRef = useRef(false);
+  const appState = useRef(AppState.currentState);
 
   const title = listing.listingDraft.title.value;
   const description = listing.listingDraft.description.value;
@@ -80,6 +93,42 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
   useEffect(() => {
     fetchUsageStatus();
+  }, []);
+
+  useEffect(() => {
+    const params = route.params;
+    if (params?.ebayCallback) {
+      pendingOAuthRef.current = false;
+      setIsConnectingEbay(false);
+      setIsRefreshingEbay(true);
+      Promise.all([checkEbayConnection(), fetchUsageStatus()])
+        .finally(() => setIsRefreshingEbay(false));
+
+      navigation.setParams({
+        ebayCallback: undefined,
+        ebaySuccess: undefined,
+        ebayError: undefined,
+        ebayMessage: undefined,
+      });
+    }
+  }, [route.params, navigation]);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        if (pendingOAuthRef.current) {
+          pendingOAuthRef.current = false;
+          setIsConnectingEbay(false);
+          setIsRefreshingEbay(true);
+          Promise.all([checkEbayConnection(), fetchUsageStatus()])
+            .finally(() => setIsRefreshingEbay(false));
+        }
+      }
+      appState.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
   }, []);
 
   const fetchUsageStatus = async () => {
@@ -94,7 +143,9 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     }
   };
 
-  const canPublish = usageStatus?.isPremium === true;
+  const isPremiumUser = usageStatus?.isPremium === true;
+  const hasTrialAvailable = usageStatus?.publishTrial?.available === true;
+  const canPublish = isPremiumUser || hasTrialAvailable;
 
   const checkEbayConnection = async () => {
     try {
@@ -146,10 +197,13 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       case 'EBAY_LOCATION_REQUIRED':
         return { message: 'Shipping location required', action: 'Enter your shipping location to continue', showModal: true };
       case 'PUBLISH_NOT_ALLOWED':
-        return { message: 'Publishing requires Premium', action: 'Upgrade to Premium to publish directly to eBay and get price comparables' };
+        return {
+          message: 'Your one-time direct publish trial has been used',
+          action: 'Upgrade to Premium for unlimited direct eBay publishing and price comparables',
+        };
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
-        return { message: 'eBay connection expired', action: 'Go to Home screen to reconnect your eBay account' };
+        return { message: 'eBay connection expired', action: 'Reconnect your eBay account below to continue' };
       case 'MISSING_ITEM_SPECIFICS':
         const missingList = errorDetails?.missing || [];
         const missingNames = missingList.length > 0 ? missingList.join(', ') : 'required fields';
@@ -194,7 +248,10 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
   const handlePublishToEbay = async () => {
     if (!canPublish) {
-      Alert.alert('Premium Required', 'Publishing to eBay requires Premium. Premium also unlocks price comparables. You can still copy your listing details.');
+      Alert.alert(
+        'Upgrade Required',
+        'Your one-time direct publish trial has already been used. Upgrade to Premium for unlimited direct publishing and price comparables.'
+      );
       return;
     }
 
@@ -242,23 +299,25 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       }
 
       setPublishResult(result);
+      await fetchUsageStatus();
 
       if (result.success) {
-        Alert.alert(
-          'Published to eBay!',
-          'Your listing is now live on eBay.',
-          [
-            {
-              text: 'View on eBay',
-              onPress: () => {
-                if (result.listing_url) {
-                  Linking.openURL(result.listing_url);
-                }
-              },
+        const isTrialPublish = result.entitlement?.usedTrial === true;
+        Alert.alert('Published to eBay!', isTrialPublish
+          ? 'Your one-time direct publish trial is complete. Upgrade to Premium for unlimited direct publishing.'
+          : 'Your listing is now live on eBay.', [
+          {
+            text: 'View on eBay',
+            onPress: () => {
+              if (result.listing_url) {
+                Linking.openURL(result.listing_url);
+              }
             },
-            { text: 'Done', onPress: () => navigation.navigate('Home') },
-          ]
-        );
+          },
+          isTrialPublish
+            ? { text: 'Stay Here', style: 'cancel' }
+            : { text: 'Done', onPress: () => navigation.navigate('Home') },
+        ]);
       } else {
         // Check for EBAY_LOCATION_REQUIRED error
         const errorCode = result.error?.code;
@@ -307,6 +366,21 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     await Clipboard.setStringAsync(text);
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleConnectEbay = async () => {
+    try {
+      setIsConnectingEbay(true);
+      setOAuthReturnRoute('Export');
+      const { auth_url } = await startEbayOAuth();
+      pendingOAuthRef.current = true;
+      await WebBrowser.openBrowserAsync(auth_url);
+    } catch (err) {
+      pendingOAuthRef.current = false;
+      setIsConnectingEbay(false);
+      setOAuthReturnRoute(null);
+      Alert.alert('Connection Error', err instanceof Error ? err.message : 'Failed to start eBay connection');
+    }
   };
 
   const buildItemDetailsText = () => {
@@ -468,6 +542,18 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
               <Text style={styles.ebayTitle}>Publish Directly to eBay</Text>
               <StatusChip label="Connected" status="success" />
             </View>
+            {!usageLoading && !isPremiumUser && hasTrialAvailable && (
+              <ErrorBanner
+                message="Trial unlocked: You have 1 one-time direct publish available from connecting eBay."
+                type="warning"
+              />
+            )}
+            {!usageLoading && !isPremiumUser && usageStatus?.publishTrial?.used && (
+              <ErrorBanner
+                message="Your one-time direct publish trial has been used. Upgrade to Premium for unlimited direct publishing."
+                type="warning"
+              />
+            )}
 
             {/* Show progress when publishing */}
             {isPublishing && publishSteps && (
@@ -476,23 +562,38 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
 
             {/* Success State */}
             {publishResult?.success ? (
-              <View style={styles.ebaySuccess}>
-                <Text style={styles.ebaySuccessText}>Published to eBay!</Text>
-                {publishResult.listing_url && (
-                  <TouchableOpacity
-                    style={styles.viewListingButton}
-                    onPress={() => Linking.openURL(publishResult.listing_url!)}
-                  >
-                    <Text style={styles.viewListingButtonText}>View on eBay</Text>
-                  </TouchableOpacity>
+              <>
+                <View style={styles.ebaySuccess}>
+                  <Text style={styles.ebaySuccessText}>Published to eBay!</Text>
+                  {publishResult.listing_url && (
+                    <TouchableOpacity
+                      style={styles.viewListingButton}
+                      onPress={() => Linking.openURL(publishResult.listing_url!)}
+                    >
+                      <Text style={styles.viewListingButtonText}>View on eBay</Text>
+                    </TouchableOpacity>
+                  )}
+                  {publishResult.sku && (
+                    <Text style={styles.publishDetailText}>SKU: {publishResult.sku}</Text>
+                  )}
+                  {publishResult.listing_id && (
+                    <Text style={styles.publishDetailText}>Listing ID: {publishResult.listing_id}</Text>
+                  )}
+                </View>
+
+                {!isPremiumUser && (
+                  <Card style={styles.trialCtaCard}>
+                    <Text style={styles.trialCtaTitle}>Keep Publishing Without Limits</Text>
+                    <Text style={styles.trialCtaBody}>
+                      You used your one-time direct publish trial. Upgrade to Premium for unlimited direct eBay publishing.
+                    </Text>
+                    <PrimaryButton
+                      title="Upgrade to Premium"
+                      onPress={() => navigation.navigate('Premium')}
+                    />
+                  </Card>
                 )}
-                {publishResult.sku && (
-                  <Text style={styles.publishDetailText}>SKU: {publishResult.sku}</Text>
-                )}
-                {publishResult.listing_id && (
-                  <Text style={styles.publishDetailText}>Listing ID: {publishResult.listing_id}</Text>
-                )}
-              </View>
+              </>
             ) : !isPublishing ? (
               <>
                 {/* Show progress if there was an error (to show which step failed) */}
@@ -522,7 +623,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 {/* Premium Required Warning */}
                 {!usageLoading && !canPublish && (
                   <ErrorBanner
-                    message="Publishing requires Premium. Premium also unlocks price comparables. You can still copy your listing details."
+                    message="Your one-time direct publish trial has been used. Upgrade to Premium for unlimited direct publishing and price comparables."
                     type="warning"
                   />
                 )}
@@ -563,8 +664,15 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           <Card borderColor={colors.ebay}>
             <Text style={styles.ebayNotConnectedTitle}>Connect eBay to publish directly</Text>
             <Text style={styles.ebayNotConnectedText}>
-              Go to Home screen to connect your eBay account
+              Connect eBay here to unlock a one-time direct publish trial and experience the full Premium publish flow.
             </Text>
+            <PrimaryButton
+              title={isConnectingEbay || isRefreshingEbay ? 'Connecting eBay...' : 'Connect eBay'}
+              onPress={handleConnectEbay}
+              loading={isConnectingEbay || isRefreshingEbay}
+              disabled={isConnectingEbay || isRefreshingEbay}
+              variant="ebay"
+            />
           </Card>
         )}
 
@@ -839,6 +947,22 @@ const styles = StyleSheet.create({
   ebayNotConnectedText: {
     fontSize: typography.sizes.body,
     color: colors.textTertiary,
+    marginBottom: spacing.md,
+  },
+  trialCtaCard: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primaryLight,
+  },
+  trialCtaTitle: {
+    fontSize: typography.sizes.title,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  trialCtaBody: {
+    fontSize: typography.sizes.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   policySection: {
     marginBottom: spacing.md,

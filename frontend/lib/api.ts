@@ -78,6 +78,13 @@ export interface UsageStatus {
   monthlyLimit: number;
   resetAt: string;
   limitType?: 'daily' | 'monthly';
+  publishTrial?: {
+    granted: boolean;
+    used: boolean;
+    available: boolean;
+    grantedAt?: string;
+    usedAt?: string;
+  };
 }
 
 export async function getUsageStatus(): Promise<UsageStatus> {
@@ -496,6 +503,10 @@ export interface EbayPublishResult {
     };
   };
   warnings?: Array<{ code: string; message: string }>;
+  entitlement?: {
+    usedTrial: boolean;
+    remainingTrialPublishes: number;
+  };
   published_at?: string;
   attempted_at: string;
 }

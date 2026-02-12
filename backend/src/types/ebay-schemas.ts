@@ -394,6 +394,12 @@ export const EbayPublishResultSchema = z.object({
     )
     .optional(),
   traceId: z.string().uuid().optional(), // Pipeline trace ID for debugging
+  entitlement: z
+    .object({
+      usedTrial: z.boolean(),
+      remainingTrialPublishes: z.number().int().min(0),
+    })
+    .optional(),
   published_at: z.string().datetime().optional(),
   attempted_at: z.string().datetime(),
 });

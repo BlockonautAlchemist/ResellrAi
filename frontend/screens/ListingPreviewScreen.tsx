@@ -47,6 +47,7 @@ const DEFAULT_CONDITION_OPTIONS: CategoryCondition[] = [
   { id: '7000', label: 'For Parts / Not Working', apiEnum: 'FOR_PARTS_OR_NOT_WORKING' },
 ];
 
+// Preferred order: used conditions first, NEW last (skew away from new)
 const PREFERRED_CONDITION_ORDER = [
   'USED_GOOD',
   'USED_VERY_GOOD',
@@ -59,24 +60,90 @@ const PREFERRED_CONDITION_ORDER = [
   'SELLER_REFURBISHED',
   'CERTIFIED_REFURBISHED',
   'FOR_PARTS_OR_NOT_WORKING',
+  'NEW',
+  'NEW_OTHER',
+  'NEW_WITH_DEFECTS',
 ];
 
 const NEW_CONDITION_VALUES = new Set(['NEW', 'NEW_OTHER', 'NEW_WITH_DEFECTS', 'NEW_WITH_TAGS', 'NEW_WITHOUT_TAGS']);
 
+// Map vision/generic condition strings to eBay apiEnum for fuzzy matching
+const VISION_TO_EBAY_CONDITION: Record<string, string> = {
+  good: 'USED_GOOD',
+  'used_good': 'USED_GOOD',
+  'used good': 'USED_GOOD',
+  very_good: 'USED_VERY_GOOD',
+  'used_very_good': 'USED_VERY_GOOD',
+  'very good': 'USED_VERY_GOOD',
+  excellent: 'USED_EXCELLENT',
+  'used_excellent': 'USED_EXCELLENT',
+  'used excellent': 'USED_EXCELLENT',
+  like_new: 'LIKE_NEW',
+  'like new': 'LIKE_NEW',
+  acceptable: 'USED_ACCEPTABLE',
+  fair: 'USED_ACCEPTABLE',
+  'used_acceptable': 'USED_ACCEPTABLE',
+  poor: 'FOR_PARTS_OR_NOT_WORKING',
+  'for_parts': 'FOR_PARTS_OR_NOT_WORKING',
+  'for parts': 'FOR_PARTS_OR_NOT_WORKING',
+  'not working': 'FOR_PARTS_OR_NOT_WORKING',
+  new: 'NEW',
+  refurbished: 'CERTIFIED_REFURBISHED',
+  'seller_refurbished': 'SELLER_REFURBISHED',
+  pre_owned: 'USED',
+  used: 'USED_GOOD',
+};
+
+/**
+ * Get the best condition value from category options.
+ * - Only returns currentValue if it exists in the category's valid options
+ * - Skews away from NEW - prefers used conditions
+ * - Maps vision strings (good, like_new, etc.) to best match in category options
+ */
 const getPreferredConditionValue = (
   options: CategoryCondition[],
   currentValue?: string
-) => {
+): string => {
+  if (!options.length) {
+    return currentValue || 'USED_GOOD';
+  }
+
   const normalizedOptions = options.map((option) => ({
     ...option,
     apiEnum: option.apiEnum?.toUpperCase?.() ?? option.apiEnum,
     label: option.label?.toLowerCase?.() ?? option.label,
   }));
 
-  if (currentValue && !NEW_CONDITION_VALUES.has(currentValue)) {
-    return currentValue;
+  const isValidInOptions = (val: string) =>
+    normalizedOptions.some(
+      (c) =>
+        (c.apiEnum && c.apiEnum.toUpperCase() === val?.toUpperCase?.()) ||
+        c.id === val
+    );
+
+  // Resolve vision/generic value to eBay enum for matching
+  const normalizedCurrent = currentValue?.trim?.();
+  const resolvedCurrent =
+    normalizedCurrent &&
+    (VISION_TO_EBAY_CONDITION[normalizedCurrent.toLowerCase()] ??
+      normalizedCurrent.toUpperCase());
+
+  // Only keep currentValue if it's valid for this category AND not NEW (we skew away from new)
+  const currentValid =
+    resolvedCurrent &&
+    isValidInOptions(resolvedCurrent) &&
+    !NEW_CONDITION_VALUES.has(resolvedCurrent);
+
+  if (currentValid) {
+    const match = normalizedOptions.find(
+      (c) =>
+        c.apiEnum?.toUpperCase() === resolvedCurrent ||
+        c.id === resolvedCurrent
+    );
+    return match?.apiEnum ?? resolvedCurrent;
   }
 
+  // Pick from preferred order (used conditions first, NEW last)
   for (const preferred of PREFERRED_CONDITION_ORDER) {
     const match = normalizedOptions.find((option) => option.apiEnum === preferred);
     if (match) {
@@ -84,12 +151,13 @@ const getPreferredConditionValue = (
     }
   }
 
+  // Fallback: first non-new option
   const firstNonNew = normalizedOptions.find(
     (option) => option.apiEnum && !NEW_CONDITION_VALUES.has(option.apiEnum)
   );
   if (firstNonNew?.apiEnum) return firstNonNew.apiEnum;
 
-  return normalizedOptions[0]?.apiEnum || currentValue || 'USED_GOOD';
+  return normalizedOptions[0]?.apiEnum || 'USED_GOOD';
 };
 
 interface PreviewScreenProps {
@@ -292,14 +360,17 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
         if (result.conditions.length > 0) {
           setAvailableConditions(result.conditions);
 
-          // Check if current condition is still valid
+          // Check if current condition is still valid for this category
           const currentConditionValid = result.conditions.some(
             (c) => c.apiEnum === selectedCondition || c.id === selectedCondition
           );
 
+          // Use vision-detected condition as hint when picking from category options (maps good/like_new etc.)
+          const conditionHint =
+            initialListing?.listingDraft?.condition?.value || selectedCondition;
           const preferredCondition = getPreferredConditionValue(
             result.conditions,
-            selectedCondition
+            conditionHint
           );
           const shouldOverrideToPreferred =
             !!preferredCondition &&
@@ -318,8 +389,13 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
             }
           }
         } else {
-          // No conditions from API - use defaults
+          // No conditions from API - use defaults and set condition from them
           setAvailableConditions(DEFAULT_CONDITION_OPTIONS);
+          const fallbackCondition = getPreferredConditionValue(
+            DEFAULT_CONDITION_OPTIONS,
+            initialListing?.listingDraft?.condition?.value
+          );
+          setSelectedCondition(fallbackCondition);
         }
       } catch (err) {
         console.error('[ListingPreview] Error fetching conditions:', err);

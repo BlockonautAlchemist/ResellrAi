@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useCallback } from 'react';
+﻿import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Linking, Alert } from 'react-native';
 import { NavigationContainer, NavigationContainerRef, getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
@@ -7,13 +7,19 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './screens/HomeScreen';
 import AccountScreen from './screens/AccountScreen';
 import AuthScreen from './screens/AuthScreen';
+import OnboardingPlanScreen from './screens/OnboardingPlanScreen';
+import OnboardingEbayScreen from './screens/OnboardingEbayScreen';
+import OnboardingCompleteScreen from './screens/OnboardingCompleteScreen';
+import PremiumScreen from './screens/PremiumScreen';
 import CameraScreen from './screens/CameraScreen';
 import GeneratingScreen from './screens/GeneratingScreen';
 import ListingPreviewScreen from './screens/ListingPreviewScreen';
 import ExportScreen from './screens/ExportScreen';
 import CompsScreen from './screens/CompsScreen';
-import { API_URL } from './lib/supabase';
+import { API_URL, supabase } from './lib/supabase';
 import { colors, typography } from './lib/theme';
+import { LoadingState } from './components/ui';
+import { consumeOAuthReturnRoute } from './lib/oauth';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,6 +55,8 @@ const linking = {
 
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthed, setIsAuthed] = useState(false);
 
   // Handle deep links for OAuth callbacks
   // Supports both Expo Go format (exp://host/--/oauth/success) and custom scheme (resellrai://oauth/success)
@@ -76,9 +84,11 @@ export default function App() {
       if (isOAuthCallback) {
         console.log('[Deep Link] OAuth callback detected for provider:', provider || 'ebay');
 
-        // Navigate to Home and trigger eBay status refresh
+        const returnRoute = consumeOAuthReturnRoute();
+
+        // Navigate to Home (or return route) and trigger eBay status refresh
         if (navigationRef.current) {
-          navigationRef.current.navigate('Home', {
+          navigationRef.current.navigate(returnRoute || 'Home', {
             ebayCallback: true,
             ebaySuccess: success,
             ebayError: error,
@@ -116,14 +126,43 @@ export default function App() {
     };
   }, [handleDeepLink]);
 
+  useEffect(() => {
+    let mounted = true;
+    const initAuth = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setIsAuthed(!!data.session);
+      } finally {
+        if (mounted) setAuthLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthed(!!session);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
   console.log(`[DEBUG] API base URL: ${API_URL ?? 'not configured'}`);
   console.log(`[DEBUG] Expo dev URL: ${EXPO_DEV_URL ?? 'not configured'}`);
   console.log(`[DEBUG] Deep link prefixes:`, linkingPrefixes);
+
+  if (authLoading) {
+    return <LoadingState message="Preparing your account..." />;
+  }
+
   return (
     <NavigationContainer ref={navigationRef} linking={linking}>
       <StatusBar style="auto" />
       <Stack.Navigator
-        initialRouteName="Home"
+        initialRouteName={isAuthed ? 'Home' : 'OnboardingAuth'}
         screenOptions={{
           headerStyle: {
             backgroundColor: colors.surface,
@@ -139,6 +178,32 @@ export default function App() {
           name="Home"
           component={HomeScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="OnboardingAuth"
+          component={AuthScreen}
+          initialParams={{ mode: 'onboarding', onAuthSuccessRoute: 'OnboardingPlan' }}
+          options={{ title: 'Sign In' }}
+        />
+        <Stack.Screen
+          name="OnboardingPlan"
+          component={OnboardingPlanScreen}
+          options={{ title: 'Choose Plan' }}
+        />
+        <Stack.Screen
+          name="OnboardingEbay"
+          component={OnboardingEbayScreen}
+          options={{ title: 'Connect eBay' }}
+        />
+        <Stack.Screen
+          name="OnboardingComplete"
+          component={OnboardingCompleteScreen}
+          options={{ title: 'All Set' }}
+        />
+        <Stack.Screen
+          name="Premium"
+          component={PremiumScreen}
+          options={{ title: 'Premium' }}
         />
         <Stack.Screen
           name="Account"

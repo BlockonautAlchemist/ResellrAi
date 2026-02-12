@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type ViewStyle, type StyleProp } from 'react-native';
 import { colors, spacing, radii, shadows } from '../../lib/theme';
 
 interface CardProps {
   children: React.ReactNode;
   elevated?: boolean;
   borderColor?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export default function Card({ children, elevated, borderColor, style }: CardProps) {

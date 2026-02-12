@@ -15,13 +15,21 @@ import { Card, PrimaryButton } from '../components/ui';
 
 interface AuthScreenProps {
   navigation: any;
+  route?: {
+    params?: {
+      mode?: 'onboarding' | 'default';
+      onAuthSuccessRoute?: string;
+    };
+  };
 }
 
-export default function AuthScreen({ navigation }: AuthScreenProps) {
+export default function AuthScreen({ navigation, route }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [loading, setLoading] = useState(false);
+  const isOnboarding = route?.params?.mode === 'onboarding';
+  const onAuthSuccessRoute = route?.params?.onAuthSuccessRoute;
 
   const handleSubmit = async () => {
     if (!isSupabaseConfigured()) {
@@ -39,11 +47,23 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigation.goBack();
+        if (onAuthSuccessRoute) {
+          navigation.reset({ index: 0, routes: [{ name: onAuthSuccessRoute }] });
+        } else {
+          navigation.goBack();
+        }
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        Alert.alert('Account created', 'Please check your email to confirm your account.');
+        if (data.session) {
+          if (onAuthSuccessRoute) {
+            navigation.reset({ index: 0, routes: [{ name: onAuthSuccessRoute }] });
+          } else {
+            navigation.goBack();
+          }
+        } else {
+          Alert.alert('Account created', 'Please check your email to confirm your account.');
+        }
       }
     } catch (err) {
       Alert.alert('Auth Failed', err instanceof Error ? err.message : 'Authentication failed');
@@ -58,11 +78,12 @@ export default function AuthScreen({ navigation }: AuthScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
       >
+        {isOnboarding && <Text style={styles.step}>Step 1 of 3</Text>}
         <Text style={styles.title}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
         <Text style={styles.subtitle}>
           {mode === 'signin'
-            ? 'Sign in to manage your subscription across devices.'
-            : 'Create an account to unlock Premium access.'}
+            ? 'Sign in to save listings and manage your subscription.'
+            : 'Create an account to get started.'}
         </Text>
 
         <Card elevated>
@@ -126,6 +147,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.heading,
     fontWeight: typography.weights.bold,
     color: colors.text,
+  },
+  step: {
+    fontSize: typography.sizes.sm,
+    color: colors.textTertiary,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   subtitle: {
     fontSize: typography.sizes.body,
