@@ -1,4 +1,4 @@
-import { API_URL, isApiConfigured } from './supabase';
+import { API_URL, isApiConfigured, supabase } from './supabase';
 import { getAnonId } from './identity';
 
 /**
@@ -21,7 +21,17 @@ function getApiUrlOrThrow(): string {
 
 async function getIdentityHeaders(): Promise<Record<string, string>> {
   const anonId = await getAnonId();
-  return { 'x-anon-id': anonId };
+  const headers: Record<string, string> = { 'x-anon-id': anonId };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    // Ignore auth errors; treat as anonymous
+  }
+  return headers;
 }
 
 export class UsageLimitError extends Error {
@@ -78,6 +88,44 @@ export async function getUsageStatus(): Promise<UsageStatus> {
   });
   if (!response.ok) {
     throw new Error(`Usage status failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// =============================================================================
+// Billing
+// =============================================================================
+
+export async function createCheckoutSession(): Promise<{ checkoutUrl: string }> {
+  const apiUrl = getApiUrlOrThrow();
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/billing/checkout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...identityHeaders,
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Checkout failed' }));
+    throw new Error(error.message || `Checkout failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function createBillingPortal(): Promise<{ portalUrl: string }> {
+  const apiUrl = getApiUrlOrThrow();
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/billing/portal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...identityHeaders,
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Portal failed' }));
+    throw new Error(error.message || `Portal failed: ${response.status}`);
   }
   return response.json();
 }
@@ -555,7 +603,10 @@ export interface EbayConnectionStatus {
 export async function getEbayConnection(): Promise<EbayConnectionStatus> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/connection?user_id=${anonId}`);
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/connection?user_id=${anonId}`, {
+    headers: identityHeaders,
+  });
 
   // The endpoint always returns 200 with { connected: true/false }
   // It never returns 500 for "not connected"
@@ -573,7 +624,10 @@ export async function getEbayConnection(): Promise<EbayConnectionStatus> {
 export async function getEbayAccount(): Promise<EbayConnectedAccount> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${anonId}`);
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${anonId}`, {
+    headers: identityHeaders,
+  });
 
   if (!response.ok) {
     if (response.status === 401) {
@@ -596,6 +650,7 @@ export async function startEbayOAuth(): Promise<{
 }> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const startUrl = `${apiUrl}/api/v1/ebay/oauth/start?redirect_context=mobile`;
 
   console.log('[eBay OAuth] Calling start endpoint:', startUrl);
@@ -603,6 +658,7 @@ export async function startEbayOAuth(): Promise<{
   const response = await fetch(startUrl, {
     method: 'GET',
     headers: {
+      ...identityHeaders,
       'x-user-id': anonId,
     },
   });
@@ -649,8 +705,10 @@ export async function startEbayOAuth(): Promise<{
 export async function disconnectEbay(): Promise<boolean> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(`${apiUrl}/api/v1/ebay/account?user_id=${anonId}`, {
     method: 'DELETE',
+    headers: identityHeaders,
   });
 
   return response.ok;
@@ -662,7 +720,10 @@ export async function disconnectEbay(): Promise<boolean> {
 export async function getEbayPolicies(): Promise<EbayUserPolicies> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
-  const response = await fetch(`${apiUrl}/api/v1/ebay/policies?user_id=${anonId}`);
+  const identityHeaders = await getIdentityHeaders();
+  const response = await fetch(`${apiUrl}/api/v1/ebay/policies?user_id=${anonId}`, {
+    headers: identityHeaders,
+  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
@@ -694,12 +755,14 @@ export async function publishToEbay(
 ): Promise<EbayPublishResult> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(
     `${apiUrl}/api/v1/ebay/listings/${listingId}/publish?user_id=${anonId}`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...identityHeaders,
       },
       body: JSON.stringify({
         policies,
@@ -739,6 +802,7 @@ export async function getEbayComps(
 ): Promise<EbayCompsResult> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const params = new URLSearchParams();
   params.set('keywords', keywords);
   params.set('user_id', anonId);
@@ -747,7 +811,9 @@ export async function getEbayComps(
   if (filters?.condition) params.set('condition', filters.condition);
   if (filters?.brand) params.set('brand', filters.brand);
 
-  const response = await fetch(`${apiUrl}/api/v1/ebay/comps?${params.toString()}`);
+  const response = await fetch(`${apiUrl}/api/v1/ebay/comps?${params.toString()}`, {
+    headers: identityHeaders,
+  });
 
   if (!response.ok) {
     throw new Error(`Get comps failed: ${response.status}`);
@@ -765,13 +831,15 @@ export async function suggestCategory(
 ): Promise<CategorySuggestionsResult> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const params = new URLSearchParams();
   params.set('query', query);
   params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/categories/suggest?${params.toString()}`
+    `${apiUrl}/api/v1/ebay/categories/suggest?${params.toString()}`,
+    { headers: identityHeaders }
   );
 
   if (!response.ok) {
@@ -819,12 +887,14 @@ export async function getCategoryConditions(
 ): Promise<CategoryConditionsResult> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const params = new URLSearchParams();
   params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/categories/${encodeURIComponent(categoryId)}/conditions?${params.toString()}`
+    `${apiUrl}/api/v1/ebay/categories/${encodeURIComponent(categoryId)}/conditions?${params.toString()}`,
+    { headers: identityHeaders }
   );
 
   if (!response.ok) {
@@ -904,12 +974,14 @@ export async function getCategoryItemAspects(
 ): Promise<ItemAspectsMetadata> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const params = new URLSearchParams();
   params.set('user_id', anonId);
   params.set('marketplace', marketplace);
 
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/category/${encodeURIComponent(categoryId)}/item_specifics?${params.toString()}`
+    `${apiUrl}/api/v1/ebay/category/${encodeURIComponent(categoryId)}/item_specifics?${params.toString()}`,
+    { headers: identityHeaders }
   );
 
   if (!response.ok) {
@@ -947,6 +1019,7 @@ export async function suggestItemSpecifics(
 ): Promise<SuggestionResult> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const params = new URLSearchParams();
   params.set('user_id', anonId);
   params.set('marketplace', marketplace);
@@ -957,6 +1030,7 @@ export async function suggestItemSpecifics(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...identityHeaders,
       },
       body: JSON.stringify({
         aiAttributes,
@@ -989,8 +1063,10 @@ export async function suggestItemSpecifics(
 export async function getSellerLocation(): Promise<SellerLocationProfile | null> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(
-    `${apiUrl}/api/v1/ebay/profile/location?user_id=${anonId}`
+    `${apiUrl}/api/v1/ebay/profile/location?user_id=${anonId}`,
+    { headers: identityHeaders }
   );
 
   if (!response.ok) {
@@ -1009,12 +1085,14 @@ export async function saveSellerLocation(
 ): Promise<SellerLocationProfile> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(
     `${apiUrl}/api/v1/ebay/profile/location?user_id=${anonId}`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...identityHeaders,
       },
       body: JSON.stringify(location),
     }
@@ -1073,11 +1151,12 @@ export async function suggestAiCategory(
 ): Promise<AiCategorySuggestResponse> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(
     `${apiUrl}/api/v1/ebay/ai/category-suggest?user_id=${anonId}`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...identityHeaders },
       body: JSON.stringify({ listingId }),
     }
   );
@@ -1100,11 +1179,12 @@ export async function autofillItemSpecifics(
 ): Promise<AiAutofillResponse> {
   const apiUrl = getApiUrlOrThrow();
   const anonId = await getAnonId();
+  const identityHeaders = await getIdentityHeaders();
   const response = await fetch(
     `${apiUrl}/api/v1/ebay/ai/autofill-specifics?user_id=${anonId}`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...identityHeaders },
       body: JSON.stringify({
         listingId,
         categoryId,

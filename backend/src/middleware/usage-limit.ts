@@ -7,9 +7,14 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { checkUsage } from '../services/usage.js';
+import type { AuthenticatedRequest } from './auth.js';
 
 /** Extract the anonymous user key from the request. */
 export function getUserKey(req: Request): string | null {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.userId) {
+    return authReq.userId;
+  }
   const anonId = req.headers['x-anon-id'];
   if (typeof anonId === 'string' && anonId.length > 0) {
     return anonId;

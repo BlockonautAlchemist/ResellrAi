@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import HomeScreen from './screens/HomeScreen';
 import AccountScreen from './screens/AccountScreen';
+import AuthScreen from './screens/AuthScreen';
 import CameraScreen from './screens/CameraScreen';
 import GeneratingScreen from './screens/GeneratingScreen';
 import ListingPreviewScreen from './screens/ListingPreviewScreen';
@@ -143,6 +144,11 @@ export default function App() {
           name="Account"
           component={AccountScreen}
           options={{ title: 'Account' }}
+        />
+        <Stack.Screen
+          name="Auth"
+          component={AuthScreen}
+          options={{ title: 'Sign In' }}
         />
         <Stack.Screen
           name="Camera"

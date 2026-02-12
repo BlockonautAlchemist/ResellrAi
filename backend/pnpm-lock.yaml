@@ -20,6 +20,9 @@ importers:
       express:
         specifier: ^4.21.0
         version: 4.22.1
+      stripe:
+        specifier: ^14.25.0
+        version: 14.25.0
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
@@ -545,6 +548,10 @@ packages:
   statuses@2.0.2:
     resolution: {integrity: sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==}
     engines: {node: '>= 0.8'}
+
+  stripe@14.25.0:
+    resolution: {integrity: sha512-wQS3GNMofCXwH8TSje8E1SE8zr6ODiGtHQgPtO95p9Mb4FhKC9jvXR2NUTpZ9ZINlckJcFidCmaTFV4P6vsb9g==}
+    engines: {node: '>=12.*'}
 
   toidentifier@1.0.1:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
@@ -1112,6 +1119,11 @@ snapshots:
       side-channel-weakmap: 1.0.2
 
   statuses@2.0.2: {}
+
+  stripe@14.25.0:
+    dependencies:
+      '@types/node': 22.19.7
+      qs: 6.14.1
 
   toidentifier@1.0.1: {}
 

@@ -5,15 +5,20 @@ import { env } from './config/env.js';
 import healthRouter from './routes/health.js';
 import listingsRouter from './routes/listings.js';
 import ebayRouter from './routes/ebay.js';
+import billingRouter from './routes/billing.js';
 import { getUserKey } from './middleware/usage-limit.js';
 import { checkUsage } from './services/usage.js';
+import { attachAuthUser } from './middleware/auth.js';
 
 const app = express();
 
 // Middleware
 app.use(cors());
+// Stripe webhook requires raw body for signature verification
+app.use('/api/v1/billing/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' })); // Increased for base64 photos
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(attachAuthUser);
 
 // Disable ngrok browser warning in development
 if (env.NODE_ENV !== 'production') {
@@ -27,6 +32,7 @@ if (env.NODE_ENV !== 'production') {
 app.use('/health', healthRouter);
 app.use('/api/v1/listings', listingsRouter);
 app.use('/api/v1/ebay', ebayRouter);
+app.use('/api/v1/billing', billingRouter);
 
 // Usage status endpoint
 app.get('/api/v1/usage/status', async (req, res) => {
@@ -53,6 +59,7 @@ app.get('/', (_req, res) => {
       health: '/health',
       listings: '/api/v1/listings',
       ebay: '/api/v1/ebay',
+      billing: '/api/v1/billing',
     },
   });
 });

@@ -30,6 +30,14 @@ const envSchema = z.object({
   // When set, uses Expo Go compatible deep links instead of custom scheme
   EXPO_DEV_URL: z.string().optional(),
 
+  // Stripe Billing
+  STRIPE_SECRET_KEY: z.string().min(1, 'STRIPE_SECRET_KEY is required'),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1, 'STRIPE_WEBHOOK_SECRET is required'),
+  STRIPE_PREMIUM_PRICE_ID: z.string().min(1, 'STRIPE_PREMIUM_PRICE_ID is required'),
+  STRIPE_SUCCESS_URL: z.string().url('STRIPE_SUCCESS_URL must be a valid URL'),
+  STRIPE_CANCEL_URL: z.string().url('STRIPE_CANCEL_URL must be a valid URL'),
+  STRIPE_PORTAL_RETURN_URL: z.string().url('STRIPE_PORTAL_RETURN_URL must be a valid URL'),
+
   // Server
   PORT: z.string().default('3000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

@@ -18,10 +18,12 @@ import {
   startEbayOAuth,
   disconnectEbay,
   getUsageStatus,
+  createCheckoutSession,
+  createBillingPortal,
   type EbayConnectionStatus,
   type UsageStatus,
 } from '../lib/api';
-import { isApiConfigured } from '../lib/supabase';
+import { isApiConfigured, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colors, spacing, typography } from '../lib/theme';
 import { Card, PrimaryButton, TierBadge, UsageCard, ErrorBanner, StatusChip } from '../components/ui';
 
@@ -37,13 +39,17 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
   const [isRefreshingEbay, setIsRefreshingEbay] = useState(false);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
   const apiConfigured = isApiConfigured();
+  const supabaseConfigured = isSupabaseConfigured();
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
 
   const isEbayConnected = !!ebayConnection?.connected;
   const needsReauth = !!ebayConnection?.needs_reauth;
   const isPremium = usageStatus?.isPremium ?? false;
+  const isAuthed = !!authEmail;
 
   useEffect(() => {
     if (!apiConfigured) {
@@ -73,6 +79,31 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
       subscription.remove();
     };
   }, [apiConnected]);
+
+  useEffect(() => {
+    let mounted = true;
+    const initAuth = async () => {
+      setAuthLoading(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setAuthEmail(data.session?.user?.email ?? null);
+      } finally {
+        if (mounted) setAuthLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -183,18 +214,50 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
           <View style={styles.subscriptionPremium}>
             <TierBadge isPremium />
             <Text style={styles.subscriptionNote}>Premium is active on your account.</Text>
+            <PrimaryButton
+              title="Manage Billing"
+              onPress={async () => {
+                try {
+                  const { portalUrl } = await createBillingPortal();
+                  await WebBrowser.openBrowserAsync(portalUrl);
+                } catch (err) {
+                  Alert.alert('Billing', err instanceof Error ? err.message : 'Failed to open billing portal');
+                }
+              }}
+              variant="secondary"
+              size="sm"
+            />
           </View>
         );
       }
 
       return (
-        <UsageCard
-          dailyUsed={usageStatus.dailyUsed}
-          dailyLimit={usageStatus.dailyLimit}
-          monthlyUsed={usageStatus.monthlyUsed}
-          monthlyLimit={usageStatus.monthlyLimit}
-          loading={usageLoading}
-        />
+        <View>
+          <UsageCard
+            dailyUsed={usageStatus.dailyUsed}
+            dailyLimit={usageStatus.dailyLimit}
+            monthlyUsed={usageStatus.monthlyUsed}
+            monthlyLimit={usageStatus.monthlyLimit}
+            loading={usageLoading}
+          />
+          <PrimaryButton
+            title="Upgrade to Premium"
+            onPress={async () => {
+              try {
+                if (!isAuthed) {
+                  navigation.navigate('Auth');
+                  return;
+                }
+                const { checkoutUrl } = await createCheckoutSession();
+                await WebBrowser.openBrowserAsync(checkoutUrl);
+              } catch (err) {
+                Alert.alert('Upgrade', err instanceof Error ? err.message : 'Failed to start checkout');
+              }
+            }}
+            variant="primary"
+            size="sm"
+          />
+        </View>
       );
     }
 
@@ -257,6 +320,42 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
               disabled={!apiConnected || !ebayAvailable || isRefreshingEbay}
               variant={ebayButtonVariant}
             />
+          </Card>
+
+          <Card elevated>
+            <Text style={styles.cardTitle}>Sign In</Text>
+            {!supabaseConfigured && (
+              <Text style={styles.cardBody}>
+                Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.
+              </Text>
+            )}
+            {authLoading ? (
+              <Text style={styles.cardBody}>Checking authentication...</Text>
+            ) : isAuthed ? (
+              <View>
+                <Text style={styles.cardBody}>Signed in as {authEmail}</Text>
+                <PrimaryButton
+                  title="Sign Out"
+                  onPress={async () => {
+                    try {
+                      await supabase.auth.signOut();
+                    } catch (err) {
+                      Alert.alert('Sign Out', err instanceof Error ? err.message : 'Failed to sign out');
+                    }
+                  }}
+                  variant="secondary"
+                  size="sm"
+                />
+              </View>
+            ) : (
+              <PrimaryButton
+                title="Sign In / Create Account"
+                onPress={() => navigation.navigate('Auth')}
+                variant="primary"
+                size="sm"
+                disabled={!supabaseConfigured}
+              />
+            )}
           </Card>
 
           <Card elevated>

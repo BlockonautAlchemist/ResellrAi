@@ -35,6 +35,8 @@ import { suggestCategoryFromListing } from '../services/ebay/category-suggester.
 import { autoFillRequiredItemSpecifics } from '../services/ebay/ai-autofill.js';
 import { getListing } from '../services/listings-db.js';
 import { isPremiumUser } from '../services/usage.js';
+import { requireAuth } from '../middleware/auth.js';
+import type { AuthenticatedRequest } from '../middleware/auth.js';
 import {
   EbayConnectedAccountSchema,
   EbayCompsQuerySchema,
@@ -81,6 +83,8 @@ function requireEbayConfig(req: Request, res: Response, next: () => void) {
  * TODO: Replace with proper auth middleware when auth is implemented
  */
 function getUserId(req: Request): string | null {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.userId) return authReq.userId;
   // For now, accept user_id from query param or header
   // In production, this should come from authenticated session
   const userId = req.query.user_id || req.headers['x-user-id'];
@@ -482,7 +486,7 @@ router.delete('/account', requireEbayConfig, async (req: Request, res: Response)
  * Returns 401 { error: "ebay_not_connected", needs_reauth: true } if no token or refresh fails.
  * Returns 403 { error: "premium_required" } if user is not a premium subscriber.
  */
-router.get('/comps', async (req: Request, res: Response) => {
+router.get('/comps', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
@@ -1513,7 +1517,7 @@ router.post('/profile/location', requireEbayConfig, async (req: Request, res: Re
  *
  * Response includes traceId for debugging
  */
-router.post('/listings/:id/publish', requireEbayConfig, async (req: Request, res: Response) => {
+router.post('/listings/:id/publish', requireEbayConfig, requireAuth, async (req: Request, res: Response) => {
   // Generate traceId at the start of the request
   const traceId = generateTraceId();
 

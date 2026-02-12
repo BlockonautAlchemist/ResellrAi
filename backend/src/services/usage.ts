@@ -2,7 +2,7 @@
  * Usage Limits Service
  *
  * Tracks per-user usage events and enforces free-tier limits.
- * Premium users are unlimited (tracked in premium_users table).
+ * Premium users are unlimited (tracked in user_subscriptions table).
  */
 
 import { supabase } from './supabase.js';
@@ -25,14 +25,16 @@ export interface UsageCheckResult {
 }
 
 /**
- * Check if a user has an active eBay account (premium).
+ * Check if a user has an active premium subscription.
  */
-export async function isPremiumUser(userKey: string): Promise<boolean> {
+export async function isPremiumUser(userId: string): Promise<boolean> {
+  if (!userId) return false;
+
   const { data, error } = await supabase
-    .from('premium_users')
-    .select('user_id, status, expires_at')
-    .eq('user_id', userKey)
-    .eq('status', 'active')
+    .from('user_subscriptions')
+    .select('user_id, tier, status, current_period_end')
+    .eq('user_id', userId)
+    .eq('tier', 'premium')
     .limit(1);
 
   if (error) {
@@ -43,14 +45,17 @@ export async function isPremiumUser(userKey: string): Promise<boolean> {
   const record = data?.[0];
   if (!record) return false;
 
-  if (record.expires_at) {
-    const expiresAt = new Date(record.expires_at).getTime();
-    if (Number.isFinite(expiresAt) && expiresAt < Date.now()) {
-      return false;
+  const status = record.status as string;
+  if (status === 'active' || status === 'trialing') return true;
+
+  if (status === 'past_due' && record.current_period_end) {
+    const end = new Date(record.current_period_end).getTime();
+    if (Number.isFinite(end) && end > Date.now()) {
+      return true;
     }
   }
 
-  return true;
+  return false;
 }
 
 /**
