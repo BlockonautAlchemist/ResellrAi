@@ -67,7 +67,7 @@ const RETRY_CONFIG = {
 
 export class EbayApiClient {
   private config: EbayApiConfig;
-  private urls: typeof EBAY_API_URLS.sandbox;
+  private urls: (typeof EBAY_API_URLS)[keyof typeof EBAY_API_URLS];
 
   constructor(config?: Partial<EbayApiConfig>) {
     this.config = {

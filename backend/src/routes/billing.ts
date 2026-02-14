@@ -50,7 +50,7 @@ async function resolveUserIdFromSubscription(
   if (!customerId) return null;
 
   const customer = await stripe.customers.retrieve(customerId);
-  if (customer && typeof customer !== 'string' && customer.metadata?.user_id) {
+  if (!customer.deleted && customer.metadata?.user_id) {
     return customer.metadata.user_id;
   }
   return null;
@@ -115,11 +115,11 @@ router.post('/portal', requireAuth, async (req: AuthenticatedRequest, res: Respo
     const existing = await getSubscription(userId);
     let customerId = existing?.stripe_customer_id ?? null;
     if (!customerId) {
-      const { data, error } = await stripe.customers.search({
+      const searchResult = await stripe.customers.search({
         query: `metadata['user_id']:'${userId}'`,
         limit: 1,
       });
-      if (error || !data || data.length === 0) {
+      if (!searchResult.data || searchResult.data.length === 0) {
         res.status(400).json({
           error: {
             code: 'CUSTOMER_NOT_FOUND',
@@ -128,7 +128,7 @@ router.post('/portal', requireAuth, async (req: AuthenticatedRequest, res: Respo
         });
         return;
       }
-      customerId = data[0].id;
+      customerId = searchResult.data[0].id;
     }
 
     const portal = await stripe.billingPortal.sessions.create({
