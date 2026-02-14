@@ -15,7 +15,6 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import {
-  exportListing,
   getEbayAccount,
   getEbayPolicies,
   publishToEbay,
@@ -59,7 +58,6 @@ interface ExportScreenProps {
 export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const { listing, price, itemSpecifics = {}, missingItemSpecifics = [], packageWeight, packageDimensions } = route.params;
   const [copied, setCopied] = useState<'title' | 'description' | 'details' | 'all' | null>(null);
-  const [exported, setExported] = useState(false);
 
   // eBay state
   const [ebayAccount, setEbayAccount] = useState<EbayConnectedAccount | null>(null);
@@ -146,6 +144,8 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const isPremiumUser = usageStatus?.isPremium === true;
   const hasTrialAvailable = usageStatus?.publishTrial?.available === true;
   const canPublish = isPremiumUser || hasTrialAvailable;
+  const trialUsedMessage = 'Your one-time direct publish trial has been used. Upgrade to Premium for unlimited direct publishing and price comparables.';
+  const showTrialUsedMessage = !usageLoading && !isPremiumUser && usageStatus?.publishTrial?.used === true;
 
   const checkEbayConnection = async () => {
     try {
@@ -198,8 +198,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         return { message: 'Shipping location required', action: 'Enter your shipping location to continue', showModal: true };
       case 'PUBLISH_NOT_ALLOWED':
         return {
-          message: 'Your one-time direct publish trial has been used',
-          action: 'Upgrade to Premium for unlimited direct eBay publishing and price comparables',
+          message: trialUsedMessage,
         };
       case 'EBAY_NOT_CONNECTED':
       case 'EBAY_REAUTH_REQUIRED':
@@ -250,7 +249,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     if (!canPublish) {
       Alert.alert(
         'Upgrade Required',
-        'Your one-time direct publish trial has already been used. Upgrade to Premium for unlimited direct publishing and price comparables.'
+        trialUsedMessage
       );
       return;
     }
@@ -304,7 +303,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       if (result.success) {
         const isTrialPublish = result.entitlement?.usedTrial === true;
         Alert.alert('Published to eBay!', isTrialPublish
-          ? 'Your one-time direct publish trial is complete. Upgrade to Premium for unlimited direct publishing.'
+          ? trialUsedMessage
           : 'Your listing is now live on eBay.', [
           {
             text: 'View on eBay',
@@ -330,12 +329,13 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
           setShowLocationModal(true);
         } else {
           const guidance = getErrorGuidance(errorCode, errorDetails);
+          const guidanceText = guidance.action ? `${guidance.message}\n\n${guidance.action}` : guidance.message;
 
           if (guidance.goBack) {
             // Show alert with option to go back to Preview
             Alert.alert(
               'Publish Failed',
-              `${guidance.message}\n\n${guidance.action || ''}`,
+              guidanceText,
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -345,7 +345,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
               ]
             );
           } else {
-            Alert.alert('Publish Failed', `${guidance.message}\n\n${guidance.action || ''}`);
+            Alert.alert('Publish Failed', guidanceText);
           }
         }
       }
@@ -427,22 +427,6 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
       .filter(Boolean)
       .join('\n\n');
     await copyToClipboard(fullText, 'all');
-  };
-
-  const handleMarkExported = async () => {
-    try {
-      await exportListing(listing.itemId, price);
-      setExported(true);
-      Alert.alert(
-        'Listing Exported!',
-        'Your listing has been saved. You can now paste it to your marketplace.',
-        [
-          { text: 'Done', onPress: () => navigation.navigate('Home') },
-        ]
-      );
-    } catch (err) {
-      Alert.alert('Error', 'Failed to mark as exported');
-    }
   };
 
   const handleLocationSaved = (profile: SellerLocationProfile) => {
@@ -548,9 +532,9 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 type="warning"
               />
             )}
-            {!usageLoading && !isPremiumUser && usageStatus?.publishTrial?.used && (
+            {showTrialUsedMessage && (
               <ErrorBanner
-                message="Your one-time direct publish trial has been used. Upgrade to Premium for unlimited direct publishing."
+                message={trialUsedMessage}
                 type="warning"
               />
             )}
@@ -585,7 +569,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                   <Card style={styles.trialCtaCard}>
                     <Text style={styles.trialCtaTitle}>Keep Publishing Without Limits</Text>
                     <Text style={styles.trialCtaBody}>
-                      You used your one-time direct publish trial. Upgrade to Premium for unlimited direct eBay publishing.
+                      Upgrade to Premium for unlimited direct publishing and price comparables.
                     </Text>
                     <PrimaryButton
                       title="Upgrade to Premium"
@@ -604,7 +588,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 )}
 
                 {/* Error Message with Guidance */}
-                {publishResult?.error && (
+                {publishResult?.error && publishResult.error.code !== 'PUBLISH_NOT_ALLOWED' && (
                   <ErrorBanner
                     message={publishResult.error.message}
                     action={getErrorGuidance(publishResult.error.code).action}
@@ -616,14 +600,6 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                 {!listing.listingDraft.category.platformCategoryId && (
                   <ErrorBanner
                     message="No eBay category selected. Go back to Preview to select a category."
-                    type="warning"
-                  />
-                )}
-
-                {/* Premium Required Warning */}
-                {!usageLoading && !canPublish && (
-                  <ErrorBanner
-                    message="Your one-time direct publish trial has been used. Upgrade to Premium for unlimited direct publishing and price comparables."
                     type="warning"
                   />
                 )}
@@ -798,9 +774,9 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
         />
         <View style={styles.footerSpacer} />
         <PrimaryButton
-          title={exported ? 'Back to Home' : 'Mark as Exported'}
-          onPress={exported ? () => navigation.navigate('Home') : handleMarkExported}
-          variant={exported ? 'success' : 'secondary'}
+          title="Back to Home"
+          onPress={() => navigation.navigate('Home')}
+          variant="secondary"
         />
       </View>
     </ScreenContainer>
