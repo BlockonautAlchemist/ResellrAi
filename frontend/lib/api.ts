@@ -87,6 +87,20 @@ export interface UsageStatus {
   };
 }
 
+export class ApiRequestError extends Error {
+  status?: number;
+  code?: string;
+  needsReauth?: boolean;
+
+  constructor(message: string, options?: { status?: number; code?: string; needsReauth?: boolean }) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = options?.status;
+    this.code = options?.code;
+    this.needsReauth = options?.needsReauth;
+  }
+}
+
 export async function getUsageStatus(): Promise<UsageStatus> {
   const apiUrl = getApiUrlOrThrow();
   const identityHeaders = await getIdentityHeaders();
@@ -827,7 +841,29 @@ export async function getEbayComps(
   });
 
   if (!response.ok) {
-    throw new Error(`Get comps failed: ${response.status}`);
+    const errorBody = await response.json().catch(() => ({} as Record<string, unknown>));
+    const rawError = typeof errorBody.error === 'string' ? errorBody.error : undefined;
+    const rawMessage = typeof errorBody.message === 'string' ? errorBody.message : undefined;
+    const needsReauth = errorBody.needs_reauth === true;
+
+    if (response.status === 401 && rawError === 'ebay_not_connected') {
+      throw new ApiRequestError(
+        'Please connect your eBay account to view price comparables.',
+        { status: 401, code: 'ebay_not_connected', needsReauth }
+      );
+    }
+
+    if (response.status === 403 && rawError === 'premium_required') {
+      throw new ApiRequestError(
+        'Price comparables are a Premium feature. Upgrade to unlock detailed market insights.',
+        { status: 403, code: 'premium_required' }
+      );
+    }
+
+    throw new ApiRequestError(
+      rawMessage || `Get comps failed: ${response.status}`,
+      { status: response.status, code: rawError }
+    );
   }
 
   return response.json();

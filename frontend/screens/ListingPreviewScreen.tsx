@@ -19,6 +19,7 @@ import {
   suggestAiCategory,
   autofillItemSpecifics,
   getUsageStatus,
+  getEbayConnection,
   type GenerateListingResponse,
   type CategoryCondition,
   type ItemAspectsMetadata,
@@ -240,6 +241,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
 
   // Usage status for premium gating (e.g. price comparables)
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+  const [isCheckingCompsAccess, setIsCheckingCompsAccess] = useState(false);
 
   const pricing = initialListing?.pricingSuggestion;
   const isPremium = usageStatus?.isPremium ?? false;
@@ -542,7 +544,9 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
     }
   };
 
-  const handleViewComps = () => {
+  const handleViewComps = async () => {
+    if (isCheckingCompsAccess) return;
+
     if (!isPremium) {
       Alert.alert(
         'Premium Feature',
@@ -554,11 +558,33 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       );
       return;
     }
-    navigation.navigate('Comps', {
-      keywords: title,
-      categoryId: selectedCategory?.categoryId,
-      listing: initialListing,
-    });
+
+    setIsCheckingCompsAccess(true);
+    try {
+      const connection = await getEbayConnection();
+      if (!connection.connected || connection.needs_reauth) {
+        Alert.alert(
+          'Connect eBay',
+          'Please connect your eBay account to view price comparables.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Connect eBay', onPress: () => navigation.navigate('Account') },
+          ]
+        );
+        return;
+      }
+
+      navigation.navigate('Comps', {
+        keywords: title,
+        categoryId: selectedCategory?.categoryId,
+        listing: initialListing,
+      });
+    } catch (err) {
+      console.warn('[ListingPreview] Failed to check eBay connection:', err);
+      Alert.alert('Error', 'Unable to verify eBay connection. Please try again.');
+    } finally {
+      setIsCheckingCompsAccess(false);
+    }
   };
 
   const handleRegenerate = async (field: 'title' | 'description' | 'price') => {
@@ -786,10 +812,11 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
           {/* View Comps Button */}
           <View style={styles.compsButtonContainer}>
             <PrimaryButton
-              title="View Price Comparables"
+              title={isCheckingCompsAccess ? 'Checking eBay Connection...' : 'View Price Comparables'}
               onPress={handleViewComps}
               variant="secondary"
               size="sm"
+              disabled={isCheckingCompsAccess}
             />
           </View>
         </Card>

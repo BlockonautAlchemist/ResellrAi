@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import {
   getEbayComps,
+  ApiRequestError,
   type EbayCompsResult,
   type EbayCompItem,
   type CompsFilters,
@@ -48,10 +49,12 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConnectEbayCta, setShowConnectEbayCta] = useState(false);
   const [selectedCondition, setSelectedCondition] = useState<CompsFilters['condition']>(undefined);
 
   const fetchComps = useCallback(async (query: string, condition?: CompsFilters['condition']) => {
     setError(null);
+    setShowConnectEbayCta(false);
     try {
       const filters: CompsFilters = {
         categoryId,
@@ -60,6 +63,15 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
       const result = await getEbayComps(query, filters);
       setCompsResult(result);
     } catch (err) {
+      if (
+        err instanceof ApiRequestError &&
+        err.status === 401 &&
+        err.code === 'ebay_not_connected'
+      ) {
+        setError('Connect your eBay account to view price comparables.');
+        setShowConnectEbayCta(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to load comparables');
     }
   }, [categoryId]);
@@ -303,6 +315,16 @@ export default function CompsScreen({ navigation, route }: CompsScreenProps) {
           <View style={styles.retryContainer}>
             <PrimaryButton title="Retry" onPress={handleRefresh} size="sm" />
           </View>
+          {showConnectEbayCta && (
+            <View style={styles.retryContainer}>
+              <PrimaryButton
+                title="Connect eBay"
+                onPress={() => navigation.navigate('Account')}
+                size="sm"
+                variant="ebay"
+              />
+            </View>
+          )}
         </>
       ) : (
         <>
