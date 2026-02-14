@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { setHasSeenOnboardingAuth } from '../lib/onboarding-state';
 import { colors, spacing, typography, radii } from '../lib/theme';
 import { Card, PrimaryButton } from '../components/ui';
 
@@ -47,6 +48,7 @@ export default function AuthScreen({ navigation, route }: AuthScreenProps) {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await setHasSeenOnboardingAuth(true);
         if (onAuthSuccessRoute) {
           navigation.reset({ index: 0, routes: [{ name: onAuthSuccessRoute }] });
         } else {
@@ -56,6 +58,7 @@ export default function AuthScreen({ navigation, route }: AuthScreenProps) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.session) {
+          await setHasSeenOnboardingAuth(true);
           if (onAuthSuccessRoute) {
             navigation.reset({ index: 0, routes: [{ name: onAuthSuccessRoute }] });
           } else {

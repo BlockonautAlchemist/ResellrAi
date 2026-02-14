@@ -122,7 +122,10 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     const unsubscribe = navigation.addListener('focus', async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        navigation.reset({ index: 0, routes: [{ name: 'OnboardingAuth' }] });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Auth', params: { onAuthSuccessRoute: 'Home' } }],
+        });
         return;
       }
       if (apiConnected) {

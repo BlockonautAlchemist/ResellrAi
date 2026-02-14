@@ -20,6 +20,7 @@ import { API_URL, supabase } from './lib/supabase';
 import { colors, typography } from './lib/theme';
 import { LoadingState } from './components/ui';
 import { consumeOAuthReturnRoute } from './lib/oauth';
+import { getHasSeenOnboardingAuth, setHasSeenOnboardingAuth } from './lib/onboarding-state';
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +58,7 @@ export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
+  const [hasSeenOnboardingAuth, setHasSeenOnboardingAuthState] = useState(false);
 
   // Handle deep links for OAuth callbacks
   // Supports both Expo Go format (exp://host/--/oauth/success) and custom scheme (resellrai://oauth/success)
@@ -130,9 +132,17 @@ export default function App() {
     let mounted = true;
     const initAuth = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const [{ data }, onboardingSeen] = await Promise.all([
+          supabase.auth.getSession(),
+          getHasSeenOnboardingAuth(),
+        ]);
         if (!mounted) return;
         setIsAuthed(!!data.session);
+        setHasSeenOnboardingAuthState(onboardingSeen);
+        if (data.session) {
+          void setHasSeenOnboardingAuth(true);
+          setHasSeenOnboardingAuthState(true);
+        }
       } finally {
         if (mounted) setAuthLoading(false);
       }
@@ -142,6 +152,10 @@ export default function App() {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthed(!!session);
+      if (session) {
+        void setHasSeenOnboardingAuth(true);
+        setHasSeenOnboardingAuthState(true);
+      }
     });
 
     return () => {
@@ -162,7 +176,7 @@ export default function App() {
     <NavigationContainer ref={navigationRef} linking={linking}>
       <StatusBar style="auto" />
       <Stack.Navigator
-        initialRouteName={isAuthed ? 'Home' : 'OnboardingAuth'}
+        initialRouteName={isAuthed ? 'Home' : hasSeenOnboardingAuth ? 'Auth' : 'OnboardingAuth'}
         screenOptions={{
           headerStyle: {
             backgroundColor: colors.surface,

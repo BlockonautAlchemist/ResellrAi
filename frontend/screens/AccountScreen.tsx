@@ -330,7 +330,10 @@ export default function AccountScreen({ navigation }: AccountScreenProps) {
                   onPress={async () => {
                     try {
                       await supabase.auth.signOut();
-                      navigation.reset({ index: 0, routes: [{ name: 'OnboardingAuth' }] });
+                      navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'Auth', params: { onAuthSuccessRoute: 'Home' } }],
+                      });
                     } catch (err) {
                       Alert.alert('Sign Out', err instanceof Error ? err.message : 'Failed to sign out');
                     }
