@@ -533,10 +533,18 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
               />
             )}
             {showTrialUsedMessage && (
-              <ErrorBanner
-                message={trialUsedMessage}
-                type="warning"
-              />
+              <>
+                <ErrorBanner
+                  message={trialUsedMessage}
+                  type="warning"
+                />
+                <View style={styles.trialUsedUpgradeCta}>
+                  <PrimaryButton
+                    title="Upgrade to Premium"
+                    onPress={() => navigation.navigate('Premium')}
+                  />
+                </View>
+              </>
             )}
 
             {/* Show progress when publishing */}
@@ -565,7 +573,7 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
                   )}
                 </View>
 
-                {!isPremiumUser && (
+                {!isPremiumUser && !showTrialUsedMessage && (
                   <Card style={styles.trialCtaCard}>
                     <Text style={styles.trialCtaTitle}>Keep Publishing Without Limits</Text>
                     <Text style={styles.trialCtaBody}>
@@ -928,6 +936,10 @@ const styles = StyleSheet.create({
   trialCtaCard: {
     marginTop: spacing.md,
     backgroundColor: colors.primaryLight,
+  },
+  trialUsedUpgradeCta: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   trialCtaTitle: {
     fontSize: typography.sizes.title,
