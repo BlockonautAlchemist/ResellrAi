@@ -980,7 +980,7 @@ export default function ListingPreviewScreen({ navigation, route }: PreviewScree
       {/* Footer */}
       <View style={styles.footer}>
         <PrimaryButton
-          title={`Export Listing ($${selectedPrice})`}
+          title={`Preview Listing ($${selectedPrice})`}
           onPress={handleExport}
           variant="success"
           size="lg"

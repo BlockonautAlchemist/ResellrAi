@@ -11,6 +11,7 @@ import {
   Modal,
   AppState,
   AppStateStatus,
+  Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
@@ -30,6 +31,7 @@ import {
   type SellerLocationProfile,
   type PackageWeight,
   type PackageDimensions,
+  PACKAGING_TYPE_LABELS,
 } from '../lib/api';
 import PublishProgress from '../components/PublishProgress';
 import LocationModal from '../components/LocationModal';
@@ -57,7 +59,7 @@ interface ExportScreenProps {
 
 export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   const { listing, price, itemSpecifics = {}, missingItemSpecifics = [], packageWeight, packageDimensions } = route.params;
-  const [copied, setCopied] = useState<'title' | 'description' | 'details' | 'all' | null>(null);
+  const [copied, setCopied] = useState<'title' | 'description' | 'category' | 'condition' | 'package' | 'details' | 'all' | null>(null);
 
   // eBay state
   const [ebayAccount, setEbayAccount] = useState<EbayConnectedAccount | null>(null);
@@ -362,7 +364,33 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     }
   };
 
-  const copyToClipboard = async (text: string, type: 'title' | 'description' | 'details' | 'all') => {
+  const formatCategoryText = () => listing.listingDraft.category.value?.trim() || 'Not selected';
+
+  const formatConditionText = () => listing.listingDraft.condition?.value?.trim() || 'Not selected';
+
+  const buildPackageDetailsText = () => {
+    const packagingType = listing.visionOutput?.shippingEstimate?.packagingType;
+    const packagingTypeLabel = packagingType ? PACKAGING_TYPE_LABELS[packagingType] : null;
+    const weightText = packageWeight
+      ? `${packageWeight.value} ${packageWeight.unit}`
+      : 'Not set';
+    const dimensionsText = packageDimensions
+      ? `${packageDimensions.length} x ${packageDimensions.width} x ${packageDimensions.height} ${packageDimensions.unit}`
+      : 'Not set';
+
+    return [
+      packagingTypeLabel ? `Packaging Type: ${packagingTypeLabel}` : null,
+      `Weight: ${weightText}`,
+      `Dimensions: ${dimensionsText}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  };
+
+  const copyToClipboard = async (
+    text: string,
+    type: 'title' | 'description' | 'category' | 'condition' | 'package' | 'details' | 'all'
+  ) => {
     await Clipboard.setStringAsync(text);
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
@@ -384,10 +412,6 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   const buildItemDetailsText = () => {
-    const categoryValue = listing.listingDraft.category.value;
-    const conditionValue = listing.listingDraft.condition?.value;
-    const categoryText = categoryValue ? `Category: ${categoryValue}` : '';
-    const conditionText = conditionValue ? `Condition: ${conditionValue}` : '';
     const mergedDetails = new Map<string, string>();
 
     for (const attr of listing.listingDraft.attributes) {
@@ -407,8 +431,6 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
     }
 
     return [
-      categoryText,
-      conditionText,
       ...Array.from(mergedDetails.values()),
     ]
       .filter(Boolean)
@@ -416,11 +438,17 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
   };
 
   const copyAll = async () => {
+    const categoryText = formatCategoryText();
+    const conditionText = formatConditionText();
+    const packageDetailsText = buildPackageDetailsText();
     const itemDetailsText = buildItemDetailsText();
 
     const fullText = [
       title,
       description,
+      `Category: ${categoryText}`,
+      `Condition: ${conditionText}`,
+      packageDetailsText ? `Package Details:\n${packageDetailsText}` : null,
       itemDetailsText ? `Item Details:\n${itemDetailsText}` : null,
       `Price: $${price}`,
     ]
@@ -491,6 +519,74 @@ export default function ExportScreen({ navigation, route }: ExportScreenProps) {
             </TouchableOpacity>
           </View>
           <Text style={styles.descriptionText}>{description}</Text>
+        </Card>
+
+        {/* Photos */}
+        <Card>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+          </View>
+          {listing.photoUrls.length > 0 ? (
+            <ScrollView horizontal style={styles.photosRow} showsHorizontalScrollIndicator={false}>
+              {listing.photoUrls.map((url, index) => (
+                <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.photo} />
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyText}>No photos available</Text>
+          )}
+        </Card>
+
+        {/* Category */}
+        <Card>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Category</Text>
+            <TouchableOpacity
+              style={[styles.copyButton, copied === 'category' && styles.copyButtonSuccess]}
+              onPress={() => copyToClipboard(formatCategoryText(), 'category')}
+            >
+              <Text style={[styles.copyButtonText, copied === 'category' && styles.copyButtonTextSuccess]}>
+                {copied === 'category' ? 'Copied!' : 'Copy'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.detailValueText}>{formatCategoryText()}</Text>
+        </Card>
+
+        {/* Condition */}
+        <Card>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Condition</Text>
+            <TouchableOpacity
+              style={[styles.copyButton, copied === 'condition' && styles.copyButtonSuccess]}
+              onPress={() => copyToClipboard(formatConditionText(), 'condition')}
+            >
+              <Text style={[styles.copyButtonText, copied === 'condition' && styles.copyButtonTextSuccess]}>
+                {copied === 'condition' ? 'Copied!' : 'Copy'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.detailValueText}>{formatConditionText()}</Text>
+        </Card>
+
+        {/* Package Details */}
+        <Card>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Package Details</Text>
+            <TouchableOpacity
+              style={[styles.copyButton, copied === 'package' && styles.copyButtonSuccess]}
+              onPress={() => copyToClipboard(buildPackageDetailsText(), 'package')}
+            >
+              <Text style={[styles.copyButtonText, copied === 'package' && styles.copyButtonTextSuccess]}>
+                {copied === 'package' ? 'Copied!' : 'Copy'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {buildPackageDetailsText().split('\n').map((line, index) => (
+            <Text key={`${line}-${index}`} style={styles.detailLineText}>
+              {line}
+            </Text>
+          ))}
         </Card>
 
         {/* Attributes */}
@@ -865,6 +961,29 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.input,
     color: colors.textSecondary,
     lineHeight: 22,
+  },
+  photosRow: {
+    marginBottom: spacing.xs,
+  },
+  photo: {
+    width: 96,
+    height: 96,
+    borderRadius: radii.md,
+    marginRight: spacing.sm,
+  },
+  emptyText: {
+    fontSize: typography.sizes.body,
+    color: colors.textMuted,
+  },
+  detailValueText: {
+    fontSize: typography.sizes.input,
+    color: colors.text,
+    fontWeight: typography.weights.medium,
+  },
+  detailLineText: {
+    fontSize: typography.sizes.body,
+    color: colors.textSecondary,
+    paddingVertical: spacing.xs,
   },
   attributeRow: {
     flexDirection: 'row',

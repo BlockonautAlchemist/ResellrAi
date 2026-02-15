@@ -276,7 +276,7 @@ export default function App() {
         <Stack.Screen
           name="Preview"
           component={ListingPreviewScreen}
-          options={{ title: 'Preview Listing' }}
+          options={{ title: 'Edit Listing' }}
         />
         <Stack.Screen
           name="Export"
