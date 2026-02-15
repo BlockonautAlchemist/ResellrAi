@@ -17,7 +17,7 @@ import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disco
 import { isApiConfigured, supabase } from '../lib/supabase';
 import { getRuntimeNetworkState } from '../lib/runtime-network';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
-import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser, ErrorBanner } from '../components/ui';
+import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser, ErrorBanner, LoadingState } from '../components/ui';
 import { setOAuthReturnRoute } from '../lib/oauth';
 
 interface HomeScreenProps {
@@ -40,12 +40,15 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [isRefreshingEbay, setIsRefreshingEbay] = useState(false);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [hasResolvedUsage, setHasResolvedUsage] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const apiConfigured = isApiConfigured();
 
   // Derived state for conditional rendering
-  const isFree = usageStatus ? !usageStatus.isPremium : true;
+  const hasUsageStatus = usageStatus !== null;
+  const isPremium = usageStatus?.isPremium === true;
+  const isFree = hasUsageStatus ? !isPremium : true;
   const isEbayConnected = !!ebayConnection?.connected;
-  const isPremium = usageStatus?.isPremium ?? false;
   const isLimitReached = isFree && (
     (usageStatus?.dailyUsed ?? 0) >= (usageStatus?.dailyLimit ?? Infinity) ||
     (usageStatus?.monthlyUsed ?? 0) >= (usageStatus?.monthlyLimit ?? Infinity)
@@ -151,20 +154,31 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
       if (apiConnected) {
         checkEbayStatus();
-        fetchUsageStatus();
+        fetchUsageStatus({ isInitial: !hasResolvedUsage });
       }
     });
     return unsubscribe;
-  }, [navigation, apiConnected]);
+  }, [navigation, apiConnected, hasResolvedUsage]);
 
-  const fetchUsageStatus = async () => {
+  const fetchUsageStatus = async (
+    options: { isInitial?: boolean } = {}
+  ) => {
+    const { isInitial = false } = options;
     try {
       setUsageLoading(true);
+      setUsageError(null);
       const status = await getUsageStatus();
       setUsageStatus(status);
     } catch (err) {
       console.warn('[HomeScreen] Failed to fetch usage status:', err);
+      if (isInitial) {
+        setUsageStatus(null);
+      }
+      setUsageError('Unable to load subscription status. Showing free plan until this refreshes.');
     } finally {
+      if (isInitial) {
+        setHasResolvedUsage(true);
+      }
       setUsageLoading(false);
     }
   };
@@ -174,7 +188,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     setApiConnected(connected);
     if (connected) {
       checkEbayStatus();
-      fetchUsageStatus();
+      fetchUsageStatus({ isInitial: true });
     }
   };
 
@@ -273,6 +287,14 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     navigation.navigate('Camera');
   };
 
+  const shouldShowTierBootstrapLoader =
+    apiConfigured &&
+    (apiConnected === null || (apiConnected === true && !hasResolvedUsage));
+
+  if (shouldShowTierBootstrapLoader) {
+    return <LoadingState message="Loading your plan..." />;
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <LinearGradient
@@ -302,6 +324,16 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               message="Unable to reach API. New Listing remains available, but generation may fail until connectivity recovers."
               action="Check selected API URL and backend reachability"
               type="warning"
+            />
+          )}
+          {usageError && (
+            <ErrorBanner
+              message={usageError}
+              action="Retry to refresh your subscription status."
+              type="warning"
+              onRetry={() => {
+                fetchUsageStatus();
+              }}
             />
           )}
 
