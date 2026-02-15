@@ -11,7 +11,8 @@
     "test:supabase": "tsx src/tests/handshake/supabase.test.ts",
     "test:openrouter": "tsx src/tests/handshake/openrouter.test.ts",
     "test:pipeline": "tsx src/tests/handshake/pipeline.test.ts",
-    "test:integration": "tsx src/tests/integration/listing-flow.test.ts"
+    "test:integration": "tsx src/tests/integration/listing-flow.test.ts",
+    "test:vision": "tsx src/tests/vision/merge.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
