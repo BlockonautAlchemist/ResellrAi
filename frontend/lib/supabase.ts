@@ -53,13 +53,16 @@ export const supabase: SupabaseClient = createClient(
   }
 );
 
-// API URL for backend calls
-export const API_URL = process.env.EXPO_PUBLIC_API_URL;
+// API URLs for backend calls
+export const API_URL_DEFAULT = process.env.EXPO_PUBLIC_API_URL;
+export const API_URL_TUNNEL = process.env.EXPO_PUBLIC_API_URL_TUNNEL;
+// Backward-compatible alias; runtime resolver may pick a different URL.
+export const API_URL = API_URL_DEFAULT ?? API_URL_TUNNEL;
 
-if (!API_URL) {
+if (!API_URL_DEFAULT && !API_URL_TUNNEL) {
   console.warn(
-    '⚠️ EXPO_PUBLIC_API_URL not configured.\n' +
-      'Copy .env.example to .env and set your public API URL (ngrok).'
+    '⚠️ API URL not configured.\n' +
+      'Set EXPO_PUBLIC_API_URL (LAN/default) and optionally EXPO_PUBLIC_API_URL_TUNNEL (ngrok for Expo tunnel).'
   );
 }
 
@@ -74,7 +77,7 @@ export function isSupabaseConfigured(): boolean {
  * Check if backend API is configured
  */
 export function isApiConfigured(): boolean {
-  return Boolean(API_URL);
+  return Boolean(API_URL_DEFAULT || API_URL_TUNNEL);
 }
 
 /**

@@ -1,18 +1,20 @@
-import { API_URL, isApiConfigured, supabase } from './supabase';
+import { isApiConfigured, supabase } from './supabase';
 import { getAnonId } from './identity';
+import { getRuntimeNetworkState } from './runtime-network';
 
 /**
  * API client for ResellrAI backend
  */
 
 const missingApiUrlMessage =
-  'EXPO_PUBLIC_API_URL is not configured. Copy .env.example to .env and set your public API URL (ngrok).';
+  'API URL is not configured. Set EXPO_PUBLIC_API_URL and optionally EXPO_PUBLIC_API_URL_TUNNEL.';
 
 function getApiUrlOrThrow(): string {
-  if (!API_URL) {
+  const runtimeState = getRuntimeNetworkState();
+  if (!runtimeState.baseUrl) {
     throw new Error(missingApiUrlMessage);
   }
-  return API_URL;
+  return runtimeState.baseUrl;
 }
 
 // =============================================================================
@@ -315,13 +317,31 @@ export async function testConnection(): Promise<boolean> {
     console.warn(missingApiUrlMessage);
     return false;
   }
+  const runtimeState = getRuntimeNetworkState();
+  const apiUrl = getApiUrlOrThrow();
   try {
-    console.log(`[DEBUG] Attempting connection to: ${API_URL}/health`);
+    console.log('[DEBUG] API connectivity check start:', {
+      apiUrl,
+      mode: runtimeState.mode,
+      source: runtimeState.source,
+      reason: runtimeState.reason,
+    });
     const health = await checkHealth();
-    console.log(`[DEBUG] Connection success:`, health);
+    console.log('[DEBUG] API connectivity check success:', {
+      apiUrl,
+      mode: runtimeState.mode,
+      health,
+      blocksNewListing: false,
+    });
     return health.status === 'ok';
   } catch (err) {
-    console.error(`[DEBUG] Connection failed to ${API_URL}/health:`, err);
+    console.error('[DEBUG] API connectivity check failed:', {
+      apiUrl,
+      mode: runtimeState.mode,
+      source: runtimeState.source,
+      blocksNewListing: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return false;
   }
 }

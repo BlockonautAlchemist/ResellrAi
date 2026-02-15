@@ -16,7 +16,8 @@ import GeneratingScreen from './screens/GeneratingScreen';
 import ListingPreviewScreen from './screens/ListingPreviewScreen';
 import ExportScreen from './screens/ExportScreen';
 import CompsScreen from './screens/CompsScreen';
-import { API_URL, supabase } from './lib/supabase';
+import { supabase } from './lib/supabase';
+import { initializeRuntimeNetwork, getRuntimeNetworkState } from './lib/runtime-network';
 import { colors, typography } from './lib/theme';
 import { LoadingState } from './components/ui';
 import { consumeOAuthReturnRoute } from './lib/oauth';
@@ -56,6 +57,15 @@ const linking = {
 
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const pendingDeepLinkParamsRef = useRef<{
+    route: string;
+    params: {
+      ebayCallback: boolean;
+      ebaySuccess: boolean;
+      ebayError: string | null;
+      ebayMessage: string | null;
+    };
+  } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
   const [hasSeenOnboardingAuth, setHasSeenOnboardingAuthState] = useState(false);
@@ -87,15 +97,20 @@ export default function App() {
         console.log('[Deep Link] OAuth callback detected for provider:', provider || 'ebay');
 
         const returnRoute = consumeOAuthReturnRoute();
+        const route = returnRoute || 'Home';
+        const params = {
+          ebayCallback: true,
+          ebaySuccess: success,
+          ebayError: error,
+          ebayMessage: message,
+        };
 
         // Navigate to Home (or return route) and trigger eBay status refresh
         if (navigationRef.current) {
-          navigationRef.current.navigate(returnRoute || 'Home', {
-            ebayCallback: true,
-            ebaySuccess: success,
-            ebayError: error,
-            ebayMessage: message,
-          });
+          navigationRef.current.navigate(route, params);
+        } else {
+          pendingDeepLinkParamsRef.current = { route, params };
+          console.log('[Deep Link] Navigation not ready; queued OAuth callback params.');
         }
 
         // Show feedback to user (only on error - success is shown via UI state change)
@@ -109,17 +124,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Check for initial URL (app opened via deep link)
-    const checkInitialURL = async () => {
-      const initialUrl = await Linking.getInitialURL();
-      if (initialUrl) {
-        console.log('[Deep Link] Initial URL:', initialUrl);
-        handleDeepLink({ url: initialUrl });
-      }
-    };
-
-    checkInitialURL();
-
     // Listen for deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
 
@@ -132,10 +136,23 @@ export default function App() {
     let mounted = true;
     const initAuth = async () => {
       try {
-        const [{ data }, onboardingSeen] = await Promise.all([
+        const [{ data }, onboardingSeen, initialUrl] = await Promise.all([
           supabase.auth.getSession(),
           getHasSeenOnboardingAuth(),
+          Linking.getInitialURL(),
         ]);
+        const runtime = initializeRuntimeNetwork(initialUrl);
+        console.log('[App Bootstrap] Runtime network selected:', {
+          mode: runtime.mode,
+          source: runtime.source,
+          baseUrl: runtime.baseUrl,
+          reason: runtime.reason,
+          initialUrl,
+        });
+        if (initialUrl) {
+          console.log('[Deep Link] Initial URL:', initialUrl);
+          handleDeepLink({ url: initialUrl });
+        }
         if (!mounted) return;
         setIsAuthed(!!data.session);
         setHasSeenOnboardingAuthState(onboardingSeen);
@@ -164,7 +181,9 @@ export default function App() {
     };
   }, []);
 
-  console.log(`[DEBUG] API base URL: ${API_URL ?? 'not configured'}`);
+  const runtimeState = getRuntimeNetworkState();
+  console.log(`[DEBUG] API base URL: ${runtimeState.baseUrl ?? 'not configured'}`);
+  console.log(`[DEBUG] Runtime mode: ${runtimeState.mode} (${runtimeState.source})`);
   console.log(`[DEBUG] Expo dev URL: ${EXPO_DEV_URL ?? 'not configured'}`);
   console.log(`[DEBUG] Deep link prefixes:`, linkingPrefixes);
 
@@ -173,7 +192,18 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} linking={linking}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      onReady={() => {
+        if (pendingDeepLinkParamsRef.current && navigationRef.current) {
+          const pending = pendingDeepLinkParamsRef.current;
+          pendingDeepLinkParamsRef.current = null;
+          navigationRef.current.navigate(pending.route, pending.params);
+          console.log('[Deep Link] Flushed queued OAuth callback params after nav ready.');
+        }
+      }}
+    >
       <StatusBar style="auto" />
       <Stack.Navigator
         initialRouteName={isAuthed ? 'Home' : hasSeenOnboardingAuth ? 'Auth' : 'OnboardingAuth'}

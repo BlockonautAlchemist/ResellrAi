@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Linking,
   AppState,
   AppStateStatus,
 } from 'react-native';
@@ -16,8 +15,9 @@ import { Feather } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { testConnection, getEbayStatus, getEbayConnection, startEbayOAuth, disconnectEbay, getUsageStatus, type EbayConnectionStatus, type UsageStatus } from '../lib/api';
 import { isApiConfigured, supabase } from '../lib/supabase';
+import { getRuntimeNetworkState } from '../lib/runtime-network';
 import { colors, spacing, typography, radii, shadows } from '../lib/theme';
-import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser } from '../components/ui';
+import { PrimaryButton, Card, TierBadge, UsageCard, UpgradeCard, PremiumTeaser, ErrorBanner } from '../components/ui';
 import { setOAuthReturnRoute } from '../lib/oauth';
 
 interface HomeScreenProps {
@@ -54,6 +54,27 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const shouldShowPremiumTeaser = isFree && !isLimitReached;
   const appState = useRef(AppState.currentState);
   const pendingOAuthRef = useRef(false);
+  const runtimeNetwork = getRuntimeNetworkState();
+  const newListingDisabledReason = shouldShowUpgradeCard ? 'usage_limit_or_paywall' : 'none';
+
+  const logNewListingDiagnostics = useCallback((phase: 'render' | 'pressIn' | 'press') => {
+    const isDisabled = newListingDisabledReason !== 'none';
+    console.log('[HomeScreen] New Listing diagnostics:', {
+      phase,
+      disabled: isDisabled,
+      disabledReason: newListingDisabledReason,
+      apiConnected,
+      apiConfigured,
+      runtimeMode: runtimeNetwork.mode,
+      apiBaseUrl: runtimeNetwork.baseUrl,
+      authStateKnown: true,
+      overlayCapturingTouches: false,
+    });
+  }, [newListingDisabledReason, apiConnected, apiConfigured, runtimeNetwork.mode, runtimeNetwork.baseUrl]);
+
+  useEffect(() => {
+    logNewListingDiagnostics('render');
+  }, [logNewListingDiagnostics]);
 
   useEffect(() => {
     if (!apiConfigured) {
@@ -241,6 +262,17 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     navigation.navigate('Premium');
   };
 
+  const handleNewListingPress = () => {
+    logNewListingDiagnostics('press');
+    if (newListingDisabledReason !== 'none') {
+      console.warn('[HomeScreen] New Listing press ignored due to disabled state:', {
+        disabledReason: newListingDisabledReason,
+      });
+      return;
+    }
+    navigation.navigate('Camera');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <LinearGradient
@@ -265,16 +297,25 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
 
+          {apiConnected === false && apiConfigured && (
+            <ErrorBanner
+              message="Unable to reach API. New Listing remains available, but generation may fail until connectivity recovers."
+              action="Check selected API URL and backend reachability"
+              type="warning"
+            />
+          )}
+
           {isFree ? (
             <>
               {/* 1. New Listing Button */}
               <TouchableOpacity
                 style={[
                   styles.newListingButton,
-                  (!apiConnected || shouldShowUpgradeCard) && styles.newListingButtonDisabled,
+                  shouldShowUpgradeCard && styles.newListingButtonDisabled,
                 ]}
-                onPress={() => navigation.navigate('Camera')}
-                disabled={!apiConnected || shouldShowUpgradeCard}
+                onPressIn={() => logNewListingDiagnostics('pressIn')}
+                onPress={handleNewListingPress}
+                disabled={shouldShowUpgradeCard}
                 activeOpacity={0.8}
               >
                 <Text style={styles.newListingButtonText}>New Listing</Text>
@@ -343,8 +384,8 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               <View style={styles.connectedButtonContainer}>
                 <PrimaryButton
                   title="New Listing"
-                  onPress={() => navigation.navigate('Camera')}
-                  disabled={!apiConnected || shouldShowUpgradeCard}
+                  onPress={handleNewListingPress}
+                  disabled={shouldShowUpgradeCard}
                   size="lg"
                 />
               </View>
